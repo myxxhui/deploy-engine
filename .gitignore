@@ -1,0 +1,22 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Local config with secrets (keep example only)
+config/environments/*/terraform.tfvars
+!config/environments/*/terraform.tfvars.example
+
+# Build
+bin/
+*.exe
+
+# State
+.deploy/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

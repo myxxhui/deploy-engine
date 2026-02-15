@@ -1,0 +1,16 @@
+# ==============================================================================
+# 开发环境 Terraform 变量模板
+# ==============================================================================
+# 复制此文件为 terraform.tfvars 并填写实际值
+# cp terraform.tfvars.example terraform.tfvars
+# ==============================================================================
+
+env_id            = "dev"
+region            = "cn-hongkong"
+# ECS 机型：ecs.u1-c1m4.xlarge=4核16G, ecs.u1-c1m2.large=2核4G, ecs.g6.xlarge=4核16G(通用型)
+instance_type     = "ecs.u1-c1m4.xlarge"
+instance_password = "CHANGE_ME_AT_LEAST_8_CHARS"
+vpc_cidr          = "10.0.0.0/16"
+vswitch_cidr      = "10.0.1.0/24"
+enable_spot       = true
+eip_bandwidth     = 100  # 按量付费（PayByTraffic），带宽上限 100Mbps

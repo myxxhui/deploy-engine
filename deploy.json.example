@@ -1,0 +1,23 @@
+{
+  "deployment_id": "my-app-001",
+  "provider_name": "aliyun",
+  "default": {
+    "resource": {
+      "region": "cn-hongkong",
+      "instance_type": "ecs.u1-c1m4.xlarge",
+      "spot_price_limit": 0.5,
+      "disk_size": 100,
+      "eip_bandwidth": 100
+    },
+    "env": {
+      "acr_server": "registry.cn-hongkong.aliyuncs.com",
+      "acr_namespace": "my-ns"
+    }
+  },
+  "user_override": {
+    "deployment": {
+      "release_name": "my-release",
+      "namespace": "default"
+    }
+  }
+}
