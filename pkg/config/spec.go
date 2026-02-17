@@ -3,57 +3,57 @@ package config
 
 // BaseResourceSpec 基础资源规格（CPU/Mem、竞价策略、区域等）。
 type BaseResourceSpec struct {
-	InstanceType     string   `json:"instance_type,omitempty"`
-	Region           string   `json:"region,omitempty"`
-	EnableSpot       *bool    `json:"enable_spot,omitempty"`
-	SpotStrategy     string   `json:"spot_strategy,omitempty"`
-	SpotPriceLimit   float64  `json:"spot_price_limit,omitempty"`
-	DiskCategory     string   `json:"disk_category,omitempty"`
-	DiskSize         int      `json:"disk_size,omitempty"`
-	EIPBandwidth     int      `json:"eip_bandwidth,omitempty"`
-	ImageID          string   `json:"image_id,omitempty"`
-	AvailabilityZone string   `json:"availability_zone,omitempty"`
-	VPCID            string   `json:"vpc_id,omitempty"`
-	VSwitchID        string   `json:"vswitch_id,omitempty"`
-	SecurityGroupID  string   `json:"security_group_id,omitempty"`
-	ResourceTags     []string `json:"resource_tags,omitempty"`
+	InstanceType     string   `json:"instance_type,omitempty" yaml:"instance_type,omitempty"`
+	Region           string   `json:"region,omitempty" yaml:"region,omitempty"`
+	EnableSpot       *bool    `json:"enable_spot,omitempty" yaml:"enable_spot,omitempty"`
+	SpotStrategy     string   `json:"spot_strategy,omitempty" yaml:"spot_strategy,omitempty"`
+	SpotPriceLimit   float64  `json:"spot_price_limit,omitempty" yaml:"spot_price_limit,omitempty"`
+	DiskCategory     string   `json:"disk_category,omitempty" yaml:"disk_category,omitempty"`
+	DiskSize         int      `json:"disk_size,omitempty" yaml:"disk_size,omitempty"`
+	EIPBandwidth     int      `json:"eip_bandwidth,omitempty" yaml:"eip_bandwidth,omitempty"`
+	ImageID          string   `json:"image_id,omitempty" yaml:"image_id,omitempty"`
+	AvailabilityZone string   `json:"availability_zone,omitempty" yaml:"availability_zone,omitempty"`
+	VPCID            string   `json:"vpc_id,omitempty" yaml:"vpc_id,omitempty"`
+	VSwitchID        string   `json:"vswitch_id,omitempty" yaml:"vswitch_id,omitempty"`
+	SecurityGroupID  string   `json:"security_group_id,omitempty" yaml:"security_group_id,omitempty"`
+	ResourceTags     []string `json:"resource_tags,omitempty" yaml:"resource_tags,omitempty"`
 }
 
 // BaseEnvSpec 基础环境定义（K3s 版本、CNI 等）。
 type BaseEnvSpec struct {
-	K3sVersion   string `json:"k3s_version,omitempty"`
-	CNI          string `json:"cni,omitempty"`
-	ACRServer    string `json:"acr_server,omitempty"`
-	ACRNamespace string `json:"acr_namespace,omitempty"`
-	ConfigFile   string `json:"config_file,omitempty"`
+	K3sVersion   string `json:"k3s_version,omitempty" yaml:"k3s_version,omitempty"`
+	CNI          string `json:"cni,omitempty" yaml:"cni,omitempty"`
+	ACRServer    string `json:"acr_server,omitempty" yaml:"acr_server,omitempty"`
+	ACRNamespace string `json:"acr_namespace,omitempty" yaml:"acr_namespace,omitempty"`
+	ConfigFile   string `json:"config_file,omitempty" yaml:"config_file,omitempty"`
 }
 
 // DeploymentSpec 应用部署定义（Chart 路径、Values 覆写）。
 type DeploymentSpec struct {
-	ChartPath    string         `json:"chart_path,omitempty"`
-	ChartRepoURL string         `json:"chart_repo_url,omitempty"`
-	ChartName    string         `json:"chart_name,omitempty"`
-	ReleaseName  string         `json:"release_name,omitempty"`
-	Namespace    string         `json:"namespace,omitempty"`
-	Values       map[string]any `json:"values,omitempty"`
-	ValuesFiles  []string       `json:"values_files,omitempty"`
+	ChartPath    string         `json:"chart_path,omitempty" yaml:"chart_path,omitempty"`
+	ChartRepoURL string         `json:"chart_repo_url,omitempty" yaml:"chart_repo_url,omitempty"`
+	ChartName    string         `json:"chart_name,omitempty" yaml:"chart_name,omitempty"`
+	ReleaseName  string         `json:"release_name,omitempty" yaml:"release_name,omitempty"`
+	Namespace    string         `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Values       map[string]any `json:"values,omitempty" yaml:"values,omitempty"`
+	ValuesFiles  []string       `json:"values_files,omitempty" yaml:"values_files,omitempty"`
 }
 
 // DeploymentConfig 顶层部署配置，支持三层合并（Default / Env / User Override）。
 type DeploymentConfig struct {
-	DeploymentID string       `json:"deployment_id"`
-	ProviderName string       `json:"provider_name,omitempty"`
-	Default      *LayerConfig `json:"default,omitempty"`
-	Env          *LayerConfig `json:"env,omitempty"`
-	UserOverride *LayerConfig `json:"user_override,omitempty"`
-	Merged       *LayerConfig `json:"-"`
+	DeploymentID string       `json:"deployment_id" yaml:"deployment_id"`
+	ProviderName string       `json:"provider_name,omitempty" yaml:"provider_name,omitempty"`
+	Default      *LayerConfig `json:"default,omitempty" yaml:"default,omitempty"`
+	Env          *LayerConfig `json:"env,omitempty" yaml:"env,omitempty"`
+	UserOverride *LayerConfig `json:"user_override,omitempty" yaml:"user_override,omitempty"`
+	Merged       *LayerConfig `json:"-" yaml:"-"`
 }
 
 // LayerConfig 单层配置（资源 + 环境 + 部署）。
 type LayerConfig struct {
-	Resource   *BaseResourceSpec `json:"resource,omitempty"`
-	Env        *BaseEnvSpec      `json:"env,omitempty"`
-	Deployment *DeploymentSpec   `json:"deployment,omitempty"`
+	Resource   *BaseResourceSpec `json:"resource,omitempty" yaml:"resource,omitempty"`
+	Env        *BaseEnvSpec      `json:"env,omitempty" yaml:"env,omitempty"`
+	Deployment *DeploymentSpec   `json:"deployment,omitempty" yaml:"deployment,omitempty"`
 }
 
 // Merge 执行三层合并：Default <- Env <- UserOverride，结果写入 c.Merged。

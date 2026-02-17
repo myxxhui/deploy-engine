@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/titan-platform/deploy-engine/pkg/config"
 	"github.com/titan-platform/deploy-engine/pkg/orchestrator"
 	"github.com/titan-platform/deploy-engine/pkg/provider"
 	"github.com/titan-platform/deploy-engine/pkg/provider/aliyun"
 	"github.com/titan-platform/deploy-engine/pkg/state"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -134,8 +136,15 @@ func loadConfig(path string) (*config.DeploymentConfig, error) {
 		return nil, err
 	}
 	var cfg config.DeploymentConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".yaml" || ext == ".yml" {
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil, err
+		}
 	}
 	return &cfg, nil
 }
