@@ -76,3 +76,52 @@ resource "alicloud_eip_association" "spot" {
   allocation_id = alicloud_eip_address.spot[0].id
   instance_id   = alicloud_instance.spot[0].id
 }
+
+# 按量 ECS（enable_spot = false 时使用）
+resource "alicloud_eip_address" "on_demand" {
+  count                = var.enable_spot ? 0 : 1
+  bandwidth            = var.eip_bandwidth
+  internet_charge_type = "PayByTraffic"
+  payment_type         = "PostPaid"
+
+  lifecycle {
+    ignore_changes = [payment_type]
+  }
+}
+
+resource "alicloud_instance" "on_demand" {
+  count = var.enable_spot ? 0 : 1
+
+  instance_name     = "${var.project_name}-on-demand-${var.env_id}"
+  instance_type     = var.instance_type
+  image_id          = local.image_id
+  availability_zone = local.availability_zone
+  security_groups   = [var.security_group_id]
+  vswitch_id        = var.vswitch_id
+  password          = var.instance_password
+
+  system_disk_category = var.disk_category
+  system_disk_size     = var.disk_size
+
+  role_name = var.ram_role_name != "" ? var.ram_role_name : null
+
+  user_data = var.user_data != "" ? base64encode(templatefile(var.user_data, merge(
+    var.user_data_vars,
+    {
+      public_ip = try(alicloud_eip_address.on_demand[0].ip_address, "")
+    }
+  ))) : ""
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-on-demand-instance-${var.env_id}"
+  })
+
+  depends_on = [alicloud_eip_address.on_demand]
+}
+
+resource "alicloud_eip_association" "on_demand" {
+  count         = var.enable_spot ? 0 : 1
+  allocation_id = alicloud_eip_address.on_demand[0].id
+  instance_id   = alicloud_instance.on_demand[0].id
+}
+

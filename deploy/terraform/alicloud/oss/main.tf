@@ -118,10 +118,9 @@ resource "alicloud_oss_bucket_object" "init_script" {
 
   content_type = "text/x-shellscript"
 
-  # 公共可读，允许 ECS 通过 HTTP 直接下载初始化脚本
-  # 若报错 "Put public object acl is not allowed"：新 Bucket 可能默认禁止，需在阿里云控制台
-  # 对该 Bucket 或账号开启「允许公共读」相关设置
-  acl = "public-read"
+  # 对象私有读，避免账号策略 "Put public object acl is not allowed"；ECS 通过 RAM Role 用 ossutil 下载
+  # 请在 tfvars 中设置 ram_role_name，并在控制台为该 Role 授予目标 Bucket 的 oss:GetObject 权限
+  acl = "private"
 
   # 注意：Terraform 会自动根据 content 计算 etag
   # 当脚本内容变化时，Terraform 会自动检测并更新对象
@@ -134,13 +133,8 @@ resource "alicloud_oss_bucket_object" "init_script" {
   ]
 }
 
-# 注意：OSS Bucket Policy 在某些账户配置下可能不允许设置
-# 如果遇到 "Put public bucket policy is not allowed" 错误，请使用以下方案：
-# 1. 为 ECS 实例配置 RAM Role（推荐）
-# 2. 通过 RAM Policy 控制 OSS 访问权限
-# 3. ossfs 会自动通过实例 metadata 服务获取临时凭证
-#
-# 当前配置：移除 Bucket Policy，依赖 RAM Role + RAM Policy
+# 对象为 private 时，ECS user-data 会先尝试 HTTP 下载（失败），再使用 ossutil + 实例元数据（RAM Role）
+# 必须在 tfvars 中设置 ram_role_name，并在控制台为该 Role 授予 OSS 读权限（如 oss:GetObject）
 # 如需启用 Bucket Policy，请确保账户允许设置公共策略
 #
 # resource "alicloud_oss_bucket_policy" "main" {

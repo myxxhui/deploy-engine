@@ -7,7 +7,9 @@
 
 # Local config with secrets (keep example only)
 config/environments/*/terraform.tfvars
-!config/environments/*/terraform.tfvars.example
+config/environments/*/terraform.*.tfvars
+config/terraform-*.tfvars
+!config/**/*.example
 
 # Build
 bin/

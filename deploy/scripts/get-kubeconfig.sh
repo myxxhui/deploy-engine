@@ -77,12 +77,13 @@ if [ -z "$PASSWORD" ]; then
     exit 1
 fi
 
-# 3. 等待 K3s 就绪并下载 kubeconfig
+# 3. 等待 K3s 就绪并下载 kubeconfig（可通过环境变量调整：KUBECONFIG_MAX_RETRIES、KUBECONFIG_SLEEP_SEC）
 log "等待 K3s API Server 就绪..."
-MAX_RETRIES=60
+MAX_RETRIES="${KUBECONFIG_MAX_RETRIES:-60}"
+KUBECONFIG_SLEEP="${KUBECONFIG_SLEEP_SEC:-5}"
 RETRY_COUNT=0
 
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
     # 尝试通过 SSH 获取 kubeconfig
     if sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@"$IP" \
         "test -f /etc/rancher/k3s/k3s.yaml && kubectl cluster-info --request-timeout=5s >/dev/null 2>&1" 2>/dev/null; then
@@ -93,10 +94,10 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     if [ $((RETRY_COUNT % 10)) -eq 0 ]; then
         log "等待中... ($RETRY_COUNT/$MAX_RETRIES)"
     fi
-    sleep 5
+    sleep "$KUBECONFIG_SLEEP"
 done
 
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+if [ "$RETRY_COUNT" -eq "$MAX_RETRIES" ]; then
     error "K3s 未在预期时间内就绪"
     exit 1
 fi

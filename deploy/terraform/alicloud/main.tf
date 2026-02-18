@@ -1,16 +1,14 @@
 # ==============================================================================
 # Deploy Engine - 阿里云基础设施部署入口（自包含，path.root = 本目录）
 # ==============================================================================
-# 配置通过 -var-file 从 config/environments/{env}/terraform.tfvars 加载
-# path.root = deploy/terraform/alicloud；bootstrap 在 ../../bootstrap；config 在 ../../../config
+# config_file 由引擎传入绝对路径，不在此处拼接 path.root。
+# path.root = deploy/terraform/alicloud；bootstrap 在 ../../bootstrap。
 
 locals {
-  config_file_path = var.config_file != "" ? (
-    startswith(var.config_file, "/") ? var.config_file : "${path.root}/../../../${var.config_file}"
-  ) : "${path.root}/../../../config/environments/${var.env_id}/titan.yaml"
+  config_file_path = var.config_file
 
   raw_config = try(
-    yamldecode(file(local.config_file_path)),
+    var.config_file != "" ? yamldecode(file(local.config_file_path)) : {},
     {}
   )
 

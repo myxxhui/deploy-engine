@@ -3,8 +3,14 @@ variable "env_id" {
   type        = string
 }
 
+variable "project" {
+  description = "项目名（可选），用于资源命名与 kubeconfig"
+  type        = string
+  default     = ""
+}
+
 variable "config_file" {
-  description = "配置文件路径（可选）"
+  description = "环境 YAML 配置文件绝对路径（由引擎传入，ConfigRoot 下的 <project>-<env>.yaml 或 default-<env>.yaml）"
   type        = string
   default     = ""
 }
@@ -50,9 +56,9 @@ variable "spot_price_limit" {
 }
 
 variable "disk_category" {
-  description = "系统盘类型"
+  description = "系统盘类型（部分地域不支持 cloud_essd，可改为 cloud_efficiency）"
   type        = string
-  default     = "cloud_essd"
+  default     = "cloud_efficiency"
 }
 
 variable "disk_size" {

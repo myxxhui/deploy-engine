@@ -7,13 +7,15 @@ import (
 	"github.com/titan-platform/deploy-engine/pkg/config"
 )
 
-// ClusterContext 部署完成后集群上下文，用于状态锚定与 GetKubeConfig。
+// ClusterContext 部署完成后集群上下文，用于状态锚定与 GetKubeConfig；Project/EnvID 供 Destroy 时与 Apply 使用同一 config_file。
 type ClusterContext struct {
 	InstanceID  string
 	PublicIP    string
 	KubeConfig  []byte
 	ReleaseName string
 	Namespace   string
+	Project     string
+	EnvID       string
 }
 
 // Provider 基础设施驱动接口。实现方通过 Terraform（或等价 IaC）管理资源生命周期。

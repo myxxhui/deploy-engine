@@ -1,4 +1,5 @@
 // deploy-engine：基础设施即插即用型部署编排 CLI（自包含 Terraform）。
+// 契约：仅从 ConfigRoot 读取配置，不向模块根（Root）写入任何配置；临时 tfvars 写系统临时目录。
 package main
 
 import (
@@ -20,13 +21,26 @@ import (
 
 func main() {
 	cmd := flag.String("cmd", "", "deploy | destroy | kubeconfig")
-	configPath := flag.String("config", "", "deploy.json")
+	configPath := flag.String("config", "", "deploy.json 路径；其所在目录作为 ConfigRoot（配置根），未设置 -config-root 时生效")
+	configRoot := flag.String("config-root", "", "配置根目录，覆盖由 -config 推导的目录；tfvars、环境 YAML 均由此解析")
 	statePath := flag.String("state", ".deploy/state.json", "state file path")
 	providerName := flag.String("provider", "aliyun", "provider name")
-	root := flag.String("root", os.Getenv("DEPLOY_ENGINE_ROOT"), "deploy-engine 模块根目录（含 deploy/ 与 config/）")
-	envID := flag.String("env", "dev", "环境 ID，对应 config/environments/<env>")
+	root := flag.String("root", os.Getenv("DEPLOY_ENGINE_ROOT"), "deploy-engine 模块根目录（含 deploy/），仅用于 Terraform 与脚本")
+	envID := flag.String("env", "dev", "环境 ID")
 	project := flag.String("project", "", "项目名，用于 state 与 kubeconfig 命名（如 kubeconfig-<project>-<env>）")
 	flag.Parse()
+
+	configRootDir := *configRoot
+	if configRootDir == "" && *configPath != "" {
+		if abs, err := filepath.Abs(*configPath); err == nil {
+			configRootDir = filepath.Dir(abs)
+		}
+	}
+	if configRootDir != "" {
+		if abs, err := filepath.Abs(configRootDir); err == nil {
+			configRootDir = abs
+		}
+	}
 
 	switch *cmd {
 	case "deploy":
@@ -46,7 +60,7 @@ func main() {
 		var p provider.Provider
 		switch cfg.ProviderName {
 		case "aliyun":
-			p = &aliyun.Driver{Root: *root, EnvID: *envID, Project: *project}
+			p = &aliyun.Driver{Root: *root, ConfigRoot: configRootDir, EnvID: *envID, Project: *project}
 		default:
 			fmt.Fprintf(os.Stderr, "unknown provider: %s\n", cfg.ProviderName)
 			os.Exit(1)
@@ -81,7 +95,7 @@ func main() {
 		var p provider.Provider
 		switch s.ProviderName {
 		case "aliyun":
-			p = &aliyun.Driver{Root: *root, EnvID: env, Project: proj}
+			p = &aliyun.Driver{Root: *root, ConfigRoot: configRootDir, EnvID: env, Project: proj}
 		default:
 			fmt.Fprintf(os.Stderr, "unknown provider: %s\n", s.ProviderName)
 			os.Exit(1)
@@ -113,7 +127,7 @@ func main() {
 		var p provider.Provider
 		switch s.ProviderName {
 		case "aliyun":
-			p = &aliyun.Driver{Root: *root, EnvID: env, Project: proj}
+			p = &aliyun.Driver{Root: *root, ConfigRoot: configRootDir, EnvID: env, Project: proj}
 		default:
 			fmt.Fprintf(os.Stderr, "unknown provider: %s\n", s.ProviderName)
 			os.Exit(1)

@@ -3,8 +3,12 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
 
 	"github.com/titan-platform/deploy-engine/pkg/config"
+	"github.com/titan-platform/deploy-engine/pkg/helm"
 	"github.com/titan-platform/deploy-engine/pkg/provider"
 	"github.com/titan-platform/deploy-engine/pkg/state"
 )
@@ -38,9 +42,67 @@ func (e *Engine) Deploy(ctx context.Context, cfg *config.DeploymentConfig) (*sta
 	}
 	s.ClusterCtx = clusterCtx
 	_ = StepConfig
-	_ = StepDeploy
-	_ = StepHealthCheck
+
+	if clusterCtx != nil && len(clusterCtx.KubeConfig) > 0 && cfg.Merged != nil && cfg.Merged.Deployment != nil {
+		if err := e.runStepDeploy(ctx, cfg.Merged.Deployment, clusterCtx.KubeConfig); err != nil {
+			return nil, err
+		}
+	}
+	if clusterCtx != nil && len(clusterCtx.KubeConfig) > 0 {
+		if err := e.runStepHealthCheck(ctx, clusterCtx.KubeConfig); err != nil {
+			return nil, fmt.Errorf("health_check: %w", err)
+		}
+	}
 	return s, nil
+}
+
+// runStepHealthCheck 执行集群可访问性检查（kubectl cluster-info），便于 CI 判定部署是否可用。
+func (e *Engine) runStepHealthCheck(ctx context.Context, kubeConfig []byte) error {
+	tmp, err := os.CreateTemp("", "deploy-engine-kubeconfig-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(kubeConfig); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig="+tmpPath, "cluster-info")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("kubectl cluster-info: %w", err)
+	}
+	return nil
+}
+
+// runStepDeploy 在集群就绪后执行 Helm install/upgrade（若配置了 chart_path 或 chart_repo_url+chart_name）。
+func (e *Engine) runStepDeploy(ctx context.Context, dep *config.DeploymentSpec, kubeConfig []byte) error {
+	hasChart := dep.ChartPath != "" || (dep.ChartRepoURL != "" && dep.ChartName != "")
+	if !hasChart {
+		return nil
+	}
+	releaseName := dep.ReleaseName
+	if releaseName == "" {
+		releaseName = "release"
+	}
+	namespace := dep.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+	return helm.InstallUpgrade(ctx, helm.InstallUpgradeOptions{
+		KubeConfig:  kubeConfig,
+		ReleaseName: releaseName,
+		Namespace:   namespace,
+		ChartPath:   dep.ChartPath,
+		ChartRepo:   dep.ChartRepoURL,
+		ChartName:   dep.ChartName,
+		Values:      dep.Values,
+		ValuesFiles: dep.ValuesFiles,
+	})
 }
 
 // Destroy 根据状态执行反向销毁（Terraform destroy）。

@@ -18,7 +18,7 @@ deploy-engine 采用**云原生 IaC 模式**，**主要使用 Terraform 实现**
 
 ### 2. 核心编排层 (Core Orchestrator Layer)
 
-- **原子化作业流**：Init → Provision → Config → Deploy → HealthCheck。Provision 即调用 `Provider.Up()`（内部执行 Terraform apply），Config/Deploy/HealthCheck 为预留扩展点。
+- **原子化作业流**：Init → Provision → Config → Deploy → HealthCheck。Provision 即调用 `Provider.Up()`（内部执行 Terraform apply）。**Deploy** 已实现：在 Provision 成功后若 `Merged.Deployment` 配置了 chart_path 或 chart_repo_url+chart_name，则执行 `helm upgrade --install`（见 `pkg/helm`）。**HealthCheck** 当前未实现，计划对指定 Deployment/Service 做就绪探测或 `kubectl cluster-info` 校验；Config 为预留扩展点。
 - **状态锚定**：State File 记录 DeploymentID、ProviderName、Project、EnvID、ClusterContext，作为「一条命令回收环境」的凭证；kubeconfig 写入 `~/.kube/kubeconfig-<project>-<env>`（当传入 project 时）。
 - **幂等**：同一 DeploymentID/EnvID 下，由 Provider（及 Terraform）保证不重复创建资源。
 
@@ -38,6 +38,7 @@ Deploy 时传入 **project** 与 **env**；State 持久化 Project、EnvID、Clu
         → Provider.Up() → terraform apply（deploy/terraform/alicloud）
         → terraform output → get-kubeconfig.sh <env> [project]
         → State (Project, EnvID, InstanceID, PublicIP, KubeConfig, ...)
+    → StepDeploy（若配置了 Chart）：helm upgrade --install
     → 持久化 State File（.deploy/state-<project>-<env>.json）
     → kubeconfig 写入 ~/.kube/kubeconfig-<project>-<env>
 
@@ -47,10 +48,11 @@ Deploy 时传入 **project** 与 **env**；State 持久化 Project、EnvID、Clu
 
 ## 模块根与路径约定
 
-- **模块根**：deploy-engine 仓库根目录，包含 `deploy/`、`config/`、`pkg/`、`cmd/`。
-- CLI 可通过 `-root` 或环境变量 `DEPLOY_ENGINE_ROOT` 指定模块根；未指定时使用当前工作目录（需在模块根下执行）。
+- **模块根（Root）**：deploy-engine 仓库根目录，包含 `deploy/`、`pkg/`、`cmd/`。**仅用于** Terraform 工作目录与脚本路径；引擎**不向 Root 写入任何配置**（临时 tfvars 写系统临时目录）。
+- **配置根（ConfigRoot）**：所有 deploy 相关配置（deploy.json、terraform tfvars、环境 YAML）的唯一起源。默认 **ConfigRoot = dir(-config)**（即 `-config` 指定文件所在目录）；可通过 **-config-root** 覆盖（如从 stdin 读 config 或需指定独立配置目录时）。tfvars、环境 YAML、deploy.json 仅从 ConfigRoot 解析，保证「配置归属应用仓、部署模块只读」。
+- CLI 可通过 `-root` 或环境变量 `DEPLOY_ENGINE_ROOT` 指定模块根；未指定时使用当前工作目录。
 - Terraform 工作目录：`<模块根>/deploy/terraform/alicloud`。
-- 配置文件：`<模块根>/config/environments/<env>/terraform.tfvars`。
+- 配置文件（扁平命名，均在 ConfigRoot 下）：tfvars 为 `terraform-<project>-<env>.tfvars`（无 project 时 `terraform-<env>.tfvars`）；环境 YAML 为 `<project>-<env>.yaml`（无 project 时 `default-<env>.yaml`）。兼容旧路径见《配置说明》迁移小节。
 
 ## 扩展新 Provider
 
