@@ -42,7 +42,7 @@ deploy-engine/
 
 ## 概念说明
 
-- **project**：项目/应用名（如 `lighthouse`），用于区分不同部署。对应 state 文件 `.deploy/state-<project>-<env>.json` 与 kubeconfig 文件 `~/.kube/kubeconfig-<project>-<env>`。
+- **project**：项目/应用名（如 `lighthouse`），用于区分不同部署。对应 state 文件 `.deploy/state-<project>-<env>.json` 与 kubeconfig 文件 `~/.kube/config-<project>-<env>`。
 - **env**：环境名（如 `dev`、`prod`）。在 **ConfigRoot** 下对应扁平文件名：tfvars 为 `terraform-<project>-<env>.tfvars`（或 `terraform-<env>.tfvars`），环境 YAML 为 `<project>-<env>.yaml`（或 `default-<env>.yaml`）。Merged 配置先于 tfvars 驱动 Terraform，tfvars 中同名变量覆盖 Merged。本模块仅使用 YAML 中 global/registry 等 Terraform 所需字段，组件开关由外部 titan-stack 等消费。
 - **state 文件**：记录本次部署的集群/实例信息，执行 `make down` 时依赖该文件；路径为 `.deploy/state-<project>-<env>.json`，建议放在应用仓。
 - **模块根（Root）**：deploy-engine 仓库根目录（含 `deploy/`），仅用于 Terraform 与脚本；CLI 通过 `-root` 或 `DEPLOY_ENGINE_ROOT` 指定。
@@ -94,10 +94,10 @@ cp config/lighthouse-dev.yaml.example config/lighthouse-dev.yaml
 make deploy lighthouse dev
 ```
 
-**第四步**：使用集群。kubeconfig 已写入 `~/.kube/kubeconfig-<project>-<env>`：
+**第四步**：使用集群。kubeconfig 已写入 `~/.kube/config-<project>-<env>`：
 
 ```bash
-export KUBECONFIG=~/.kube/kubeconfig-lighthouse-dev
+export KUBECONFIG=~/.kube/config-lighthouse-dev
 kubectl get nodes
 ```
 
@@ -122,7 +122,7 @@ make down lighthouse dev
 
 ### 示例场景
 
-- **场景 1：本仓快速试跑**——在 deploy-engine 根目录完成第二步（在 config/ 下准备扁平命名的 tfvars 与 YAML），执行 `make deploy myapp dev`，使用 `export KUBECONFIG=~/.kube/kubeconfig-myapp-dev` 连接集群。
+- **场景 1：本仓快速试跑**——在 deploy-engine 根目录完成第二步（在 config/ 下准备扁平命名的 tfvars 与 YAML），执行 `make deploy myapp dev`，使用 `export KUBECONFIG=~/.kube/config-myapp-dev` 连接集群。
 - **场景 2：业务仓引用**——将 deploy-engine 作为 submodule 或 clone 到业务仓子目录（如 `lighthouse-deploy/deploy-engine`）。**必须在应用仓维护 config/**（如 `lighthouse-deploy/config/`），放置 `deploy.json`（或 `<project>.json`）、`terraform-<project>-<env>.tfvars`、`<project>-<env>.yaml`；**禁止在 deploy-engine 目录下放业务配置**，以免拉取部署模块更新时冲突。在应用仓根执行：`CONFIG_ROOT=$$(pwd)/config make -C deploy-engine deploy lighthouse dev`；state 建议放在应用仓（如 `-state=./.deploy/state-lighthouse-dev.json`）。
 - **场景 3：同一项目多环境**——在 ConfigRoot 下为各环境准备 `terraform-<project>-<env>.tfvars` 与 `<project>-<env>.yaml`（如 prod），分别执行 `make deploy lighthouse dev` 与 `make deploy lighthouse prod`。
 
@@ -141,7 +141,7 @@ make down lighthouse dev
 ### 输出与可观测性
 
 - **部署过程**：终端会输出 Terraform init/apply 日志、get-kubeconfig 脚本日志，以及最终的「deploy ok, state: ...」。
-- **确认成功**：① 存在 `.deploy/state-<project>-<env>.json`；② 存在 `~/.kube/kubeconfig-<project>-<env>`；③ 执行 `export KUBECONFIG=~/.kube/kubeconfig-<project>-<env> && kubectl get nodes` 能看到节点。
+- **确认成功**：① 存在 `.deploy/state-<project>-<env>.json`；② 存在 `~/.kube/config-<project>-<env>`；③ 执行 `export KUBECONFIG=~/.kube/config-<project>-<env> && kubectl get nodes` 能看到节点。
 - **排错**：Terraform 报错时可进入 `deploy/terraform/alicloud` 执行 `terraform plan -var-file=...` 查看差异；脚本失败时查看终端 stderr。若 **deploy 因「K3s 未在预期时间内就绪」而失败**，说明 Terraform 与 ECS 已创建成功，仅 K3s 启动或网络较慢，可先确认 ECS 与 user-data 正常后，**单独执行 `make kubeconfig <project> <env>` 重试拉取 kubeconfig**，无需重新执行完整 deploy。拉取脚本支持环境变量 **`KUBECONFIG_MAX_RETRIES`**（默认 60）、**`KUBECONFIG_SLEEP_SEC`**（默认 5），在慢环境可适当增大以延长等待。
 
 ### 常见问题与排错

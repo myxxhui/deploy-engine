@@ -19,7 +19,7 @@ deploy-engine 采用**云原生 IaC 模式**，**主要使用 Terraform 实现**
 ### 2. 核心编排层 (Core Orchestrator Layer)
 
 - **原子化作业流**：Init → Provision → Config → Deploy → HealthCheck。Provision 即调用 `Provider.Up()`（内部执行 Terraform apply）。**Deploy** 已实现：在 Provision 成功后若 `Merged.Deployment` 配置了 chart_path 或 chart_repo_url+chart_name，则执行 `helm upgrade --install`（见 `pkg/helm`）。**HealthCheck** 当前未实现，计划对指定 Deployment/Service 做就绪探测或 `kubectl cluster-info` 校验；Config 为预留扩展点。
-- **状态锚定**：State File 记录 DeploymentID、ProviderName、Project、EnvID、ClusterContext，作为「一条命令回收环境」的凭证；kubeconfig 写入 `~/.kube/kubeconfig-<project>-<env>`（当传入 project 时）。
+- **状态锚定**：State File 记录 DeploymentID、ProviderName、Project、EnvID、ClusterContext，作为「一条命令回收环境」的凭证；kubeconfig 写入 `~/.kube/config-<project>-<env>`（当传入 project 时）。
 - **幂等**：同一 DeploymentID/EnvID 下，由 Provider（及 Terraform）保证不重复创建资源。
 
 ### 3. 基础设施适配层 (Infrastructure Adapter Layer)
@@ -29,7 +29,7 @@ deploy-engine 采用**云原生 IaC 模式**，**主要使用 Terraform 实现**
 
 ## 数据流概览
 
-Deploy 时传入 **project** 与 **env**；State 持久化 Project、EnvID、ClusterContext 等；kubeconfig 写入 `~/.kube/kubeconfig-<project>-<env>`。Destroy 时从 State 读回 project/env，调用 Provider.Down 并删除同一 kubeconfig 文件。
+Deploy 时传入 **project** 与 **env**；State 持久化 Project、EnvID、ClusterContext 等；kubeconfig 写入 `~/.kube/config-<project>-<env>`。Destroy 时从 State 读回 project/env，调用 Provider.Down 并删除同一 kubeconfig 文件。
 
 ```
 用户配置 (deploy.json) + project + env
@@ -40,10 +40,10 @@ Deploy 时传入 **project** 与 **env**；State 持久化 Project、EnvID、Clu
         → State (Project, EnvID, InstanceID, PublicIP, KubeConfig, ...)
     → StepDeploy（若配置了 Chart）：helm upgrade --install
     → 持久化 State File（.deploy/state-<project>-<env>.json）
-    → kubeconfig 写入 ~/.kube/kubeconfig-<project>-<env>
+    → kubeconfig 写入 ~/.kube/config-<project>-<env>
 
 回收：State File → 读回 Project/EnvID → Engine.Destroy() → Provider.Down()
-    → terraform destroy -target=module.ecs → 删除 ~/.kube/kubeconfig-<project>-<env>
+    → terraform destroy -target=module.ecs → 删除 ~/.kube/config-<project>-<env>
 ```
 
 ## 模块根与路径约定

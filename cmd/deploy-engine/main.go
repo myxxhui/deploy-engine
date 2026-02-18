@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/titan-platform/deploy-engine/pkg/config"
 	"github.com/titan-platform/deploy-engine/pkg/orchestrator"
@@ -19,6 +20,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// #region agent log
+const debugLogPath = "/Users/huishaoqi/Desktop/workspace/.cursor/debug.log"
+
+func agentLog(location, message, hypothesisId string, data map[string]interface{}) {
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	payload := map[string]interface{}{
+		"location": location, "message": message, "hypothesisId": hypothesisId,
+		"data": data, "timestamp": time.Now().UnixMilli(),
+	}
+	if b, err := json.Marshal(payload); err == nil {
+		f, err := os.OpenFile(debugLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err == nil {
+			f.Write(append(b, '\n'))
+			f.Close()
+		}
+	}
+}
+// #endregion
+
 func main() {
 	cmd := flag.String("cmd", "", "deploy | destroy | kubeconfig")
 	configPath := flag.String("config", "", "deploy.json 路径；其所在目录作为 ConfigRoot（配置根），未设置 -config-root 时生效")
@@ -27,7 +49,7 @@ func main() {
 	providerName := flag.String("provider", "aliyun", "provider name")
 	root := flag.String("root", os.Getenv("DEPLOY_ENGINE_ROOT"), "deploy-engine 模块根目录（含 deploy/），仅用于 Terraform 与脚本")
 	envID := flag.String("env", "dev", "环境 ID")
-	project := flag.String("project", "", "项目名，用于 state 与 kubeconfig 命名（如 kubeconfig-<project>-<env>）")
+	project := flag.String("project", "", "项目名，用于 state 与 kubeconfig 命名（如 config-<project>-<env>）")
 	flag.Parse()
 
 	configRootDir := *configRoot
@@ -44,15 +66,29 @@ func main() {
 
 	switch *cmd {
 	case "deploy":
+		// #region agent log
+		defer func() {
+			if r := recover(); r != nil {
+				agentLog("main.go:deploy:recover", fmt.Sprint(r), "H5", map[string]interface{}{"panic": fmt.Sprint(r)})
+				panic(r)
+			}
+		}()
+		// #endregion
 		if *configPath == "" {
 			fmt.Fprintln(os.Stderr, "usage: deploy-engine -cmd=deploy -config=deploy.json [-root=...] [-env=dev] [-project=名称]")
 			os.Exit(1)
 		}
+		// #region agent log
+		agentLog("main.go:deploy:start", "deploy started", "H5", map[string]interface{}{"configPath": *configPath, "project": *project, "env": *envID})
+		// #endregion
 		cfg, err := loadConfig(*configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "config: %v\n", err)
 			os.Exit(1)
 		}
+		// #region agent log
+		agentLog("main.go:deploy:after-loadConfig", "loadConfig ok", "H5", nil)
+		// #endregion
 		cfg.Merge()
 		if cfg.ProviderName == "" {
 			cfg.ProviderName = *providerName
@@ -67,16 +103,29 @@ func main() {
 		}
 		eng := &orchestrator.Engine{Provider: p, StateDir: filepath.Dir(*statePath)}
 		s, err := eng.Deploy(context.Background(), cfg)
+		// #region agent log
+		if err != nil {
+			agentLog("main.go:deploy:after-Deploy", "Deploy error", "H1", map[string]interface{}{"error": err.Error()})
+		} else {
+			agentLog("main.go:deploy:after-Deploy", "Deploy ok", "H1", nil)
+		}
+		// #endregion
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "deploy: %v\n", err)
 			os.Exit(1)
 		}
 		s.EnvID = *envID
 		s.Project = *project
+		// #region agent log
+		agentLog("main.go:deploy:before-saveState", "before saveState", "H4", map[string]interface{}{"statePath": *statePath})
+		// #endregion
 		if err := saveState(*statePath, s); err != nil {
 			fmt.Fprintf(os.Stderr, "save state: %v\n", err)
 			os.Exit(1)
 		}
+		// #region agent log
+		agentLog("main.go:deploy:after-saveState", "deploy ok", "H4", nil)
+		// #endregion
 		fmt.Println("deploy ok, state:", *statePath)
 	case "destroy":
 		s, err := loadState(*statePath)

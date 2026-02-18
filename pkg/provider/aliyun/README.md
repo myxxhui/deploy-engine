@@ -15,7 +15,7 @@
 
 | 方法 | 实现 |
 |------|------|
-| **Up** | 在 `deploy/terraform/alicloud` 执行 `terraform init`、`terraform apply`，再调用 `get-kubeconfig.sh <EnvID> [Project]` 拉取 kubeconfig。输出路径：**带 project 时为 `~/.kube/kubeconfig-<project>-<env>`**，否则 `~/.kube/kubeconfig-<env>`。 |
+| **Up** | 在 `deploy/terraform/alicloud` 执行 `terraform init`、`terraform apply`，再调用 `get-kubeconfig.sh <EnvID> [Project]` 拉取 kubeconfig。输出路径：**带 project 时为 `~/.kube/config-<project>-<env>`**，否则 `~/.kube/config-<env>`。 |
 | **Down** | 执行 `terraform destroy -target=module.ecs`，并删除上述 kubeconfig 文件。 |
 | **GetKubeConfig** | 执行脚本并读取与 Up 时相同的 kubeconfig 路径。 |
 

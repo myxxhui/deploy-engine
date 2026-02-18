@@ -50,17 +50,17 @@ make deploy <project> <env>
 
 例如：`make deploy myapp dev`。
 
-**预期输出**：终端输出 Terraform init/apply、get-kubeconfig 等日志；若成功，最后打印「deploy ok, state: .deploy/state-<project>-<env>.json」。state 文件生成于 `.deploy/state-<project>-<env>.json`，kubeconfig 生成于 `~/.kube/kubeconfig-<project>-<env>`。
+**预期输出**：终端输出 Terraform init/apply、get-kubeconfig 等日志；若成功，最后打印「deploy ok, state: .deploy/state-<project>-<env>.json」。state 文件生成于 `.deploy/state-<project>-<env>.json`，kubeconfig 生成于 `~/.kube/config-<project>-<env>`。
 
 ### 1.4 判断 K3s 是否就绪
 
-- **成功**：get-kubeconfig 脚本正常退出，且存在 `~/.kube/kubeconfig-<project>-<env>`。
+- **成功**：get-kubeconfig 脚本正常退出，且存在 `~/.kube/config-<project>-<env>`。
 - **超时**：若报「K3s 未在预期时间内就绪」，说明 ECS 与 Terraform 已成功，仅 K3s 启动或网络较慢。可稍等后执行 `make kubeconfig <project> <env>` 重试，或增大环境变量 **KUBECONFIG_MAX_RETRIES**、**KUBECONFIG_SLEEP_SEC** 后再次执行 deploy 或 kubeconfig。
 
 ### 1.5 验收集群
 
 ```bash
-export KUBECONFIG=~/.kube/kubeconfig-<project>-<env>
+export KUBECONFIG=~/.kube/config-<project>-<env>
 kubectl get nodes
 ```
 
@@ -79,7 +79,7 @@ make down <project> <env>
 ### 1.7 本仓验证成功标准
 
 - 存在 `.deploy/state-<project>-<env>.json`。
-- 存在 `~/.kube/kubeconfig-<project>-<env>`。
+- 存在 `~/.kube/config-<project>-<env>`。
 - `kubectl get nodes` 能列出节点且为 Ready。
 - 执行 `make down <project> <env>` 后，ECS/EIP 等资源释放，kubeconfig 被删除。
 
@@ -143,7 +143,7 @@ CONFIG_ROOT=$(pwd)/config make -C deploy-engine deploy <project> <env>
 **验收集群**
 
 ```bash
-export KUBECONFIG=~/.kube/kubeconfig-<project>-<env>
+export KUBECONFIG=~/.kube/config-<project>-<env>
 kubectl get nodes
 ```
 
@@ -168,7 +168,7 @@ CONFIG_ROOT=$(pwd)/config make -C deploy-engine kubeconfig <project> <env>
 ### 2.5 引用部署成功标准
 
 - 在业务仓 config/ 下已放置所需配置，且未修改 deploy-engine 目录内文件。
-- 执行 deploy 后存在 state 与 `~/.kube/kubeconfig-<project>-<env>`；`kubectl get nodes` 可见 Ready 节点。
+- 执行 deploy 后存在 state 与 `~/.kube/config-<project>-<env>`；`kubectl get nodes` 可见 Ready 节点。
 - 执行 down 后 ECS/EIP 等释放，kubeconfig 被删除。
 
 **与本仓验证的差异**：本仓验证在 deploy-engine 根目录执行，ConfigRoot 默认为 deploy-engine 的 **config/**；引用部署在业务仓根目录执行，ConfigRoot 通过 `CONFIG_ROOT=$(pwd)/config` 指向业务仓的 config/，配置与（可选）state 均归属业务仓。

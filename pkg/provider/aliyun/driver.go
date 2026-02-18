@@ -3,18 +3,38 @@ package aliyun
 
 import (
 	"bufio"
-	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/titan-platform/deploy-engine/pkg/config"
 	"github.com/titan-platform/deploy-engine/pkg/provider"
 )
+
+// #region agent log
+const debugLogPath = "/Users/huishaoqi/Desktop/workspace/.cursor/debug.log"
+
+func agentLog(location, message, hypothesisId string, data map[string]interface{}) {
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	payload := map[string]interface{}{"location": location, "message": message, "hypothesisId": hypothesisId, "data": data, "timestamp": time.Now().UnixMilli()}
+	if b, err := json.Marshal(payload); err == nil {
+		if f, err := os.OpenFile(debugLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			f.Write(append(b, '\n'))
+			f.Close()
+		}
+	}
+}
+
+// #endregion
 
 const providerName = "aliyun"
 
@@ -27,7 +47,7 @@ type Driver struct {
 	ConfigRoot string
 	// EnvID 环境标识。
 	EnvID string
-	// Project 项目名，用于 kubeconfig 命名（kubeconfig-<Project>-<EnvID>）；为空时仅用 EnvID。
+	// Project 项目名，用于 kubeconfig 命名（config-<Project>-<EnvID>）；为空时仅用 EnvID。
 	Project string
 }
 
@@ -101,15 +121,42 @@ func (d *Driver) instancePasswordFromEnvOrFile(tfvarsPath string) (string, error
 	return "", fmt.Errorf("instance_password 未设置：请设置环境变量 TF_VAR_instance_password 或在 %s 中配置 instance_password", tfvarsPath)
 }
 
-// kubeconfigPath 与 get-kubeconfig.sh 输出一致：带 Project 时为 kubeconfig-<Project>-<EnvID>，否则 kubeconfig-<EnvID>
+// ecsInstanceInState 检查 Terraform state 中是否仍存在 ECS 实例（destroy 后 output 可能仍残留旧值，须以 state 为准）。
+func (d *Driver) ecsInstanceInState(ctx context.Context, tfDir string) bool {
+	cmd := exec.CommandContext(ctx, "terraform", "state", "list")
+	cmd.Dir = tfDir
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), "module.ecs.alicloud_instance.")
+}
+
+// tryExistingOutputs 从当前 Terraform 状态读取 instance_id、public_ip，且 state 中确有 ECS 资源时才返回 skipApply=true（避免 destroy 后残留 output 导致误跳过 apply）。
+func (d *Driver) tryExistingOutputs(ctx context.Context, tfDir string) (instanceID, publicIP string, skipApply bool) {
+	id, err1 := d.terraformOutput(ctx, tfDir, "instance_id")
+	ip, err2 := d.terraformOutput(ctx, tfDir, "public_ip")
+	if err1 != nil || err2 != nil {
+		return "", "", false
+	}
+	if id == "" || ip == "" || ip == "Instance Released" {
+		return "", "", false
+	}
+	if !d.ecsInstanceInState(ctx, tfDir) {
+		return "", "", false
+	}
+	return id, ip, true
+}
+
+// kubeconfigPath 与 get-kubeconfig.sh 输出一致：带 Project 时为 config-<Project>-<EnvID>，否则 config-<EnvID>
 func (d *Driver) kubeconfigPath() string {
 	dir := os.Getenv("KUBECONFIG_DIR")
 	if dir == "" {
 		dir = filepath.Join(os.Getenv("HOME"), ".kube")
 	}
-	name := "kubeconfig-" + d.EnvID
+	name := "config-" + d.EnvID
 	if d.Project != "" {
-		name = "kubeconfig-" + d.Project + "-" + d.EnvID
+		name = "config-" + d.Project + "-" + d.EnvID
 	}
 	return filepath.Join(dir, name)
 }
@@ -135,63 +182,98 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 	if err := d.runTerraform(ctx, tfDir, []string{"init"}, nil); err != nil {
 		return nil, fmt.Errorf("aliyun: terraform init: %w", err)
 	}
-	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script[0]")
 
-	tfVarsAbs, _ := filepath.Abs(tfvars)
-	applyArgs := []string{"apply", "-refresh=false", "-auto-approve"}
+	// 若 Terraform 状态中已有 ECS（instance_id、public_ip 有效），则跳过 apply，仅拉取 kubeconfig 并继续部署
+	instanceID, publicIP, skipApply := d.tryExistingOutputs(ctx, tfDir)
+	if skipApply {
+		fmt.Fprintln(os.Stderr, "deploy-engine: 检测到已有 ECS/K3s，跳过 Terraform apply，直接获取 kubeconfig 并继续部署。")
+	} else {
+		_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script[0]")
+		tfVarsAbs, _ := filepath.Abs(tfvars)
+		applyArgs := []string{"apply", "-refresh=false", "-auto-approve"}
 
-	var merged *config.LayerConfig
-	if cfg != nil && cfg.Merged != nil {
-		merged = cfg.Merged
-	}
-	mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
-	configFilePath := mergedVars.ConfigFile
-	if configFilePath != "" && !filepath.IsAbs(configFilePath) {
-		configFilePath = filepath.Join(d.configRoot(), configFilePath)
-	}
-	if configFilePath == "" {
-		configFilePath = filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
-	}
-	if configFilePath != "" {
-		if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
-			return nil, fmt.Errorf("aliyun: 配置文件不存在: %s（请在 ConfigRoot 下放置 <project>-<env>.yaml 或 default-<env>.yaml，或设置 config_file）", configFilePath)
+		var merged *config.LayerConfig
+		if cfg != nil && cfg.Merged != nil {
+			merged = cfg.Merged
 		}
-		mergedVars.ConfigFile = configFilePath
-	}
-	tmpFile, err := os.CreateTemp("", "deploy-engine-*.tfvars")
-	if err != nil {
-		return nil, fmt.Errorf("aliyun: 创建临时 tfvars: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-	if err := config.WriteAliyunTerraformVarsToFile(mergedVars, tmpPath); err != nil {
-		return nil, fmt.Errorf("aliyun: 写入 Merged 变量: %w", err)
-	}
-	applyArgs = append(applyArgs, "-var-file="+tmpPath)
-	if p := d.projectTfvarsPath(); p != "" {
-		if _, err := os.Stat(p); err == nil {
-			applyArgs = append(applyArgs, "-var-file="+p)
+		mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
+		configFilePath := mergedVars.ConfigFile
+		if configFilePath != "" && !filepath.IsAbs(configFilePath) {
+			configFilePath = filepath.Join(d.configRoot(), configFilePath)
+		}
+		if configFilePath == "" {
+			configFilePath = filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
+		}
+		if configFilePath != "" {
+			if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+				return nil, fmt.Errorf("aliyun: 配置文件不存在: %s（请在 ConfigRoot 下放置 <project>-<env>.yaml 或 default-<env>.yaml，或设置 config_file）", configFilePath)
+			}
+			mergedVars.ConfigFile = configFilePath
+		}
+		tmpFile, err := os.CreateTemp("", "deploy-engine-*.tfvars")
+		if err != nil {
+			return nil, fmt.Errorf("aliyun: 创建临时 tfvars: %w", err)
+		}
+		tmpPath := tmpFile.Name()
+		defer os.Remove(tmpPath)
+		if err := config.WriteAliyunTerraformVarsToFile(mergedVars, tmpPath); err != nil {
+			return nil, fmt.Errorf("aliyun: 写入 Merged 变量: %w", err)
+		}
+		applyArgs = append(applyArgs, "-var-file="+tmpPath)
+		if p := d.projectTfvarsPath(); p != "" {
+			if _, err := os.Stat(p); err == nil {
+				applyArgs = append(applyArgs, "-var-file="+p)
+			}
+		}
+		applyArgs = append(applyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+d.EnvID)
+
+		// #region agent log
+		agentLog("driver.go:Up:before-apply", "calling terraform apply", "H1", map[string]interface{}{"tfDir": tfDir})
+		// #endregion
+		if err := d.runTerraform(ctx, tfDir, applyArgs, nil); err != nil {
+			// #region agent log
+			agentLog("driver.go:Up:after-apply", "terraform apply error", "H1", map[string]interface{}{"error": err.Error()})
+			// #endregion
+			return nil, fmt.Errorf("aliyun: terraform apply: %w", err)
+		}
+		// #region agent log
+		agentLog("driver.go:Up:after-apply", "terraform apply ok", "H1", nil)
+		// #endregion
+
+		var errOut error
+		instanceID, errOut = d.terraformOutput(ctx, tfDir, "instance_id")
+		// #region agent log
+		agentLog("driver.go:Up:terraformOutput-instance_id", "terraform output instance_id", "H2", map[string]interface{}{"err": errOut != nil, "instanceID": instanceID})
+		// #endregion
+		if errOut != nil {
+			return nil, fmt.Errorf("aliyun: terraform output instance_id: %w", errOut)
+		}
+		publicIP, errOut = d.terraformOutput(ctx, tfDir, "public_ip")
+		if errOut != nil {
+			return nil, fmt.Errorf("aliyun: terraform output public_ip: %w", errOut)
+		}
+		if publicIP == "" || publicIP == "Instance Released" {
+			return nil, fmt.Errorf("aliyun: public_ip 无效，可能实例未就绪")
 		}
 	}
-	applyArgs = append(applyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+d.EnvID)
 
-	if err := d.runTerraform(ctx, tfDir, applyArgs, nil); err != nil {
-		return nil, fmt.Errorf("aliyun: terraform apply: %w", err)
+	// #region agent log
+	agentLog("driver.go:Up:before-fetchKubeConfig", "calling fetchKubeConfig", "H3", nil)
+	// #endregion
+	if skipApply {
+		fmt.Fprintln(os.Stderr, "deploy-engine: 正在获取 kubeconfig（等待 K3s 就绪，最多约 5 分钟）...")
+	} else {
+		fmt.Fprintln(os.Stderr, "deploy-engine: Terraform 已完成，正在等待 K3s 就绪并获取 kubeconfig（可能需数分钟）...")
 	}
-
-	instanceID, err := d.terraformOutput(ctx, tfDir, "instance_id")
-	if err != nil {
-		return nil, fmt.Errorf("aliyun: terraform output instance_id: %w", err)
+	os.Stderr.Sync()
+	// 始终使用完整等待（60×5s），避免跳过 apply 时 24s 不足导致 K3s 未就绪
+	kubeConfig, kubeErr := d.fetchKubeConfigWithOpts(ctx, false)
+	// #region agent log
+	agentLog("driver.go:Up:after-fetchKubeConfig", "fetchKubeConfig done", "H3", map[string]interface{}{"err": kubeErr != nil, "kubeConfigLen": len(kubeConfig)})
+	// #endregion
+	if kubeErr != nil {
+		return nil, fmt.Errorf("aliyun: 获取 kubeconfig 失败: %w", kubeErr)
 	}
-	publicIP, err := d.terraformOutput(ctx, tfDir, "public_ip")
-	if err != nil {
-		return nil, fmt.Errorf("aliyun: terraform output public_ip: %w", err)
-	}
-	if publicIP == "" || publicIP == "Instance Released" {
-		return nil, fmt.Errorf("aliyun: public_ip 无效，可能实例未就绪")
-	}
-
-	kubeConfig, _ := d.fetchKubeConfig(ctx)
 	releaseName := ""
 	namespace := "default"
 	if cfg != nil && cfg.Merged != nil && cfg.Merged.Deployment != nil {
@@ -264,7 +346,21 @@ func (d *Driver) runTerraform(ctx context.Context, tfDir string, args []string, 
 	return cmd.Run()
 }
 
+// resourceInState 检查 state list 中是否包含指定资源地址（子串匹配）。
+func (d *Driver) resourceInState(ctx context.Context, tfDir, resourceSubstr string) bool {
+	cmd := exec.CommandContext(ctx, "terraform", "state", "list")
+	cmd.Dir = tfDir
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), resourceSubstr)
+}
+
 func (d *Driver) runTerraformStateRm(ctx context.Context, tfDir, resource string) error {
+	if !d.resourceInState(ctx, tfDir, resource) {
+		return nil
+	}
 	cmd := exec.CommandContext(ctx, "terraform", "state", "rm", resource)
 	cmd.Dir = tfDir
 	cmd.Stdout = os.Stdout
@@ -284,6 +380,12 @@ func (d *Driver) terraformOutput(ctx context.Context, tfDir, name string) (strin
 }
 
 func (d *Driver) fetchKubeConfig(ctx context.Context) ([]byte, error) {
+	return d.fetchKubeConfigWithOpts(ctx, false)
+}
+
+// fetchKubeConfigWithOpts 拉取 kubeconfig。skipLongWait=true 时通过环境变量让脚本缩短「等待 K3s」重试（适用于已有 ECS 的场景）。
+// 脚本 stderr 经管道逐行读到 os.Stderr 并 Sync，确保在 make/非 TTY 下进度实时可见。
+func (d *Driver) fetchKubeConfigWithOpts(ctx context.Context, skipLongWait bool) ([]byte, error) {
 	root := d.root()
 	script := filepath.Join(root, "deploy", "scripts", "get-kubeconfig.sh")
 	if _, err := os.Stat(script); os.IsNotExist(err) {
@@ -295,10 +397,31 @@ func (d *Driver) fetchKubeConfig(ctx context.Context) ([]byte, error) {
 	}
 	cmd := exec.CommandContext(ctx, "bash", args...)
 	cmd.Dir = root
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("get-kubeconfig.sh: %w: %s", err, stderr.String())
+	cmd.Stdout = os.Stdout
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("get-kubeconfig.sh StderrPipe: %w", err)
 	}
+	// 已有 ECS 时给 K3s 约 24s 窗口（12 次 × 2s），避免 3 次过短导致误报未就绪
+	if skipLongWait {
+		cmd.Env = append(os.Environ(), "KUBECONFIG_MAX_RETRIES=12", "KUBECONFIG_SLEEP_SEC=2")
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("get-kubeconfig.sh Start: %w", err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sc := bufio.NewScanner(stderrPipe)
+		for sc.Scan() {
+			fmt.Fprintln(os.Stderr, sc.Text())
+			os.Stderr.Sync()
+		}
+	}()
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("get-kubeconfig.sh: %w", err)
+	}
+	wg.Wait()
 	return os.ReadFile(d.kubeconfigPath())
 }
