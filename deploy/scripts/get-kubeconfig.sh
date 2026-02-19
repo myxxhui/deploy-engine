@@ -16,14 +16,18 @@ else
     CONFIG_OUT="$KUBE_DIR/config-$ENV"
 fi
 TF_LIVE_DIR="$PROJECT_ROOT/deploy/terraform/alicloud"
-# 与 deploy-engine 扁平命名一致：优先 terraform-<project>-<env>.tfvars，否则 terraform-<env>.tfvars，最后回退旧路径
+# 与 deploy-engine 扁平命名一致：① terraform-<project>-<env>.tfvars ② terraform-<env>.tfvars（无 project 或 project 级不存在时）③ 旧路径
 if [ -n "$PROJECT" ]; then
     FLAT_TFVARS="$PROJECT_ROOT/config/terraform-${PROJECT}-${ENV}.tfvars"
+    FALLBACK_TFVARS="$PROJECT_ROOT/config/terraform-${ENV}.tfvars"
 else
     FLAT_TFVARS="$PROJECT_ROOT/config/terraform-${ENV}.tfvars"
+    FALLBACK_TFVARS=""
 fi
 if [ -f "$FLAT_TFVARS" ]; then
     TFVARS_FILE="$FLAT_TFVARS"
+elif [ -n "${FALLBACK_TFVARS:-}" ] && [ -f "$FALLBACK_TFVARS" ]; then
+    TFVARS_FILE="$FALLBACK_TFVARS"
 else
     TFVARS_FILE="$PROJECT_ROOT/config/environments/${ENV}/terraform.tfvars"
 fi
@@ -102,7 +106,7 @@ RETRY_COUNT=0
 diagnose_k3s() {
     local diag
     if ! sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "exit 0" 2>/dev/null; then
-        diag="SSH 连接失败。请检查: (1) 安全组放行 22 且来源含本机 IP (2) config/terraform-* tfvars 中 instance_password 正确 (3) 本机执行: ssh -o ConnectTimeout=5 root@$IP"
+        diag="SSH 连接失败。请检查: (1) 安全组放行 22 且来源含本机 IP（若部署与当前非同一出口 IP，请在 tfvars 中设置 ssh_allowed_cidr = \"0.0.0.0/0\" 后重新 make deploy，或本机重新 make deploy 以更新放行 IP）(2) instance_password 正确 (3) 本机执行: ssh -o ConnectTimeout=5 root@$IP"
     else
         local has_yaml
         has_yaml=$(sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "test -f /etc/rancher/k3s/k3s.yaml && echo 1 || echo 0" 2>/dev/null)

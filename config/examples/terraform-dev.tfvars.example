@@ -15,5 +15,5 @@ enable_spot       = true
 spot_strategy     = "SpotAsPriceGo"
 spot_price_limit  = 0.5
 eip_bandwidth     = 100
-disk_category     = "cloud"
+disk_category     = "cloud_efficiency"
 ram_role_name     = ""

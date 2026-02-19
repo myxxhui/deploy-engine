@@ -164,6 +164,23 @@ func regionFromTfvars(tfvarsPath string) string {
 	return ""
 }
 
+// diskCategoryFromTfvars 从 tfvars 解析 disk_category，供 apply 时显式传入以确保优先级（与 region 同逻辑）。
+func diskCategoryFromTfvars(tfvarsPath string) string {
+	f, err := os.Open(tfvarsPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	re := regexp.MustCompile(`^\s*disk_category\s*=\s*"([^"]+)"\s*$`)
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if m := re.FindStringSubmatch(sc.Text()); len(m) == 2 {
+			return m[1]
+		}
+	}
+	return ""
+}
+
 // instancePasswordFromEnvOrFile 优先从环境变量 TF_VAR_instance_password 读取，否则从 tfvars 文件中解析。
 func (d *Driver) instancePasswordFromEnvOrFile(tfvarsPath string) (string, error) {
 	if p := os.Getenv("TF_VAR_instance_password"); p != "" {
@@ -246,10 +263,54 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		return nil, fmt.Errorf("aliyun: terraform init: %w", err)
 	}
 
-	// 若 Terraform 状态中已有 ECS（instance_id、public_ip 有效），则跳过 apply，仅拉取 kubeconfig 并继续部署
+	// 若 Terraform 状态中已有 ECS（instance_id、public_ip 有效），则跳过完整 apply，但仍对安全组规则做定向 apply 以同步 ssh_allowed_cidr 等
 	instanceID, publicIP, skipApply := d.tryExistingOutputs(ctx, tfDir)
 	if skipApply {
-		fmt.Fprintln(os.Stderr, "deploy-engine: 检测到已有 ECS/K3s，跳过 Terraform apply，直接获取 kubeconfig 并继续部署。")
+		fmt.Fprintln(os.Stderr, "deploy-engine: 检测到已有 ECS/K3s，跳过完整 Terraform apply；正在同步安全组规则（ssh_allowed_cidr/出口 IP）...")
+		tfVarsAbs, _ := filepath.Abs(tfvars)
+		var merged *config.LayerConfig
+		if cfg != nil && cfg.Merged != nil {
+			merged = cfg.Merged
+		}
+		mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
+		configFilePath := filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
+		if configFilePath != "" {
+			mergedVars.ConfigFile = configFilePath
+		}
+		tmpFile, err := os.CreateTemp("", "deploy-engine-*.tfvars")
+		if err == nil {
+			tmpPath := tmpFile.Name()
+			defer os.Remove(tmpPath)
+			_ = config.WriteAliyunTerraformVarsToFile(mergedVars, tmpPath)
+			regionVal := regionFromTfvars(tfvars)
+			if regionVal == "" {
+				regionVal = mergedVars.Region
+			}
+			sgArgs := []string{"apply", "-refresh=false", "-auto-approve",
+				"-target=module.security.alicloud_security_group_rule.ssh[0]",
+				"-target=module.security.alicloud_security_group_rule.k8s_api[0]",
+				"-var-file=" + tmpPath, "-var-file=" + tfVarsAbs, "-var=env_id=" + d.EnvID}
+			if regionVal != "" {
+				sgArgs = append(sgArgs, "-var=region="+regionVal)
+			}
+			applyEnv := map[string]string{}
+			if regionVal != "" {
+				applyEnv["ALICLOUD_REGION"] = regionVal
+			}
+			if p := d.projectTfvarsPath(); p != "" {
+				if _, err := os.Stat(p); err == nil {
+					// 在 -var-file=tfVarsAbs 前插入 project tfvars，与完整 apply 顺序一致
+					newArgs := append([]string{}, sgArgs[:6]...) // apply + 2×-target + -var-file=tmpPath
+					newArgs = append(newArgs, "-var-file="+p)
+					newArgs = append(newArgs, sgArgs[6:]...)
+					sgArgs = newArgs
+				}
+			}
+			if err := d.runTerraform(ctx, tfDir, sgArgs, applyEnv); err != nil {
+				fmt.Fprintf(os.Stderr, "deploy-engine: 安全组规则同步失败（可忽略后重试 kubeconfig）: %v\n", err)
+			}
+		}
+		fmt.Fprintln(os.Stderr, "deploy-engine: 继续获取 kubeconfig...")
 	} else {
 		_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script[0]")
 		tfVarsAbs, _ := filepath.Abs(tfvars)
@@ -289,15 +350,35 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 			}
 		}
 		applyArgs = append(applyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+d.EnvID)
-		// 确保 tfvars 中的 region 覆盖 Merged，避免被 config_file YAML 等覆盖
-		if r := regionFromTfvars(tfvars); r != "" {
-			applyArgs = append(applyArgs, "-var=region="+r)
+		// 确保 tfvars 中的 region 显式传入，覆盖 Merged 与 TF_VAR_region，避免被环境变量或错误地域覆盖
+		regionVal := regionFromTfvars(tfvars)
+		if regionVal == "" {
+			regionVal = mergedVars.Region
+		}
+		if regionVal != "" {
+			applyArgs = append(applyArgs, "-var=region="+regionVal)
+			fmt.Fprintf(os.Stderr, "deploy-engine: 使用地域 region=%s（来自 tfvars 或 deploy 配置，将覆盖 TF_VAR_region）\n", regionVal)
+		}
+		// 确保 tfvars 中的 disk_category 显式传入，覆盖 Merged 与 TF_VAR_disk_category（IoOptimized 实例仅支持 cloud_efficiency/cloud_ssd）
+		diskFromTfvars := diskCategoryFromTfvars(tfvars)
+		diskCategoryVal := diskFromTfvars
+		if diskCategoryVal == "" {
+			diskCategoryVal = mergedVars.DiskCategory
+		}
+		if diskCategoryVal != "" {
+			applyArgs = append(applyArgs, "-var=disk_category="+diskCategoryVal)
+			fmt.Fprintf(os.Stderr, "deploy-engine: 使用系统盘类型 disk_category=%s（来自 tfvars 或 deploy 配置）\n", diskCategoryVal)
 		}
 
 		// #region agent log
 		agentLog("driver.go:Up:before-apply", "calling terraform apply", "H1", map[string]interface{}{"tfDir": tfDir})
 		// #endregion
-		if err := d.runTerraform(ctx, tfDir, applyArgs, nil); err != nil {
+		// 强制子进程 ALICLOUD_REGION，避免宿主机环境变量覆盖 var.region 导致请求发往错误地域（如 cn-beijing）
+		applyEnv := map[string]string{}
+		if regionVal != "" {
+			applyEnv["ALICLOUD_REGION"] = regionVal
+		}
+		if err := d.runTerraform(ctx, tfDir, applyArgs, applyEnv); err != nil {
 			// #region agent log
 			agentLog("driver.go:Up:after-apply", "terraform apply error", "H1", map[string]interface{}{"error": err.Error()})
 			// #endregion
@@ -418,11 +499,34 @@ func (d *Driver) GetKubeConfig(ctx context.Context, _ string) ([]byte, error) {
 	return d.fetchKubeConfig(ctx)
 }
 
-func (d *Driver) runTerraform(ctx context.Context, tfDir string, args []string, _ map[string]string) error {
+// runTerraform 执行 terraform 命令。envOverrides 非空时合并进子进程环境（用于强制 ALICLOUD_REGION 等，避免宿主机环境覆盖 tfvars）。
+func (d *Driver) runTerraform(ctx context.Context, tfDir string, args []string, envOverrides map[string]string) error {
 	cmd := exec.CommandContext(ctx, "terraform", args...)
 	cmd.Dir = tfDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	if len(envOverrides) > 0 {
+		env := os.Environ()
+		overridden := make(map[string]bool)
+		for _, e := range env {
+			if idx := strings.IndexByte(e, '='); idx > 0 {
+				overridden[e[:idx]] = true
+			}
+		}
+		for k, v := range envOverrides {
+			if !overridden[k] {
+				env = append(env, k+"="+v)
+			} else {
+				for i, e := range env {
+					if strings.HasPrefix(e, k+"=") {
+						env[i] = k + "=" + v
+						break
+					}
+				}
+			}
+		}
+		cmd.Env = env
+	}
 	return cmd.Run()
 }
 

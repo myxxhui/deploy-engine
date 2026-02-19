@@ -133,6 +133,9 @@ func main() {
 			// 无 state 文件时，FULL_DESTROY=1 且指定了 project 则仍可完整销毁（按 tfvars 清理资源）
 			if os.Getenv("FULL_DESTROY") != "" && *project != "" {
 				s = &state.State{ProviderName: *providerName, Project: *project, EnvID: *envID, ClusterCtx: nil}
+			} else if os.IsNotExist(err) {
+				fmt.Println("no state file, nothing to destroy")
+				os.Exit(0)
 			} else {
 				fmt.Fprintf(os.Stderr, "state: %v\n", err)
 				os.Exit(1)

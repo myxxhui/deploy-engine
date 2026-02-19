@@ -52,6 +52,7 @@ module "security" {
   vpc_cidr                    = module.vpc.vpc_cidr
   use_existing_security_group = var.security_group_use_existing
   existing_security_group_id  = var.security_group_existing_id
+  ssh_allowed_cidr            = var.ssh_allowed_cidr
 }
 
 module "nas" {

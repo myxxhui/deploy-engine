@@ -11,6 +11,8 @@ data "http" "current_ip" {
 
 locals {
   current_ip = chomp(data.http.current_ip.response_body)
+  # 若指定了 ssh_allowed_cidr 则用其，否则用 apply 时检测的出口 IP/32
+  ssh_cidr   = var.ssh_allowed_cidr != "" ? var.ssh_allowed_cidr : "${local.current_ip}/32"
 }
 
 # 创建新的安全组（当 use_existing_security_group=false 时）
@@ -39,8 +41,8 @@ resource "alicloud_security_group_rule" "ssh" {
   port_range        = "22/22"
   priority          = 1
   security_group_id = local.security_group_id
-  cidr_ip           = "${local.current_ip}/32" # 源 IP 是访问者的公网 IP（通过 EIP 转发）
-  description       = "SSH access from current IP only (auto-detected, via EIP)"
+  cidr_ip           = local.ssh_cidr
+  description       = "SSH access (via EIP); source from ssh_allowed_cidr or apply-time IP"
 }
 
 # K8s API 规则：允许从当前 IP 访问（通过 EIP 转发，nic_type 必须是 "intranet"）
@@ -53,8 +55,8 @@ resource "alicloud_security_group_rule" "k8s_api" {
   port_range        = "6443/6443"
   priority          = 1
   security_group_id = local.security_group_id
-  cidr_ip           = "${local.current_ip}/32" # 源 IP 是访问者的公网 IP（通过 EIP 转发）
-  description       = "Kubernetes API Server access from current IP only (auto-detected, via EIP)"
+  cidr_ip           = local.ssh_cidr
+  description       = "K8s API (via EIP); source from ssh_allowed_cidr or apply-time IP"
 }
 
 resource "alicloud_security_group_rule" "vpc_internal" {

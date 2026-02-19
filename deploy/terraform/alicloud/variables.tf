@@ -157,6 +157,12 @@ variable "security_group_existing_id" {
   default     = ""
 }
 
+variable "ssh_allowed_cidr" {
+  description = "允许 SSH/6443 的源 CIDR；为空时使用 apply 时检测到的出口 IP/32。可设为 \"0.0.0.0/0\" 以允许任意 IP（仅建议开发环境）"
+  type        = string
+  default     = ""
+}
+
 variable "nas_use_existing_file_system" {
   description = "是否使用已存在的 NAS File System"
   type        = bool
