@@ -22,19 +22,19 @@
 
 | 用途 | 文件名（ConfigRoot = config/ 下） | 来源 |
 |------|-----------------------------------|------|
-| Terraform 变量 | `terraform-<project>-<env>.tfvars`（无 project 时为 `terraform-<env>.tfvars`） | 从 `config/terraform-<project>-<env>.tfvars.example` **复制并重命名** |
-| 环境 YAML | `<project>-<env>.yaml`（无 project 时为 `default-<env>.yaml`） | 从 `config/<project>-<env>.yaml.example` 或 `config/default-<env>.yaml.example` **复制并重命名** |
-| 部署配置 | `deploy.yaml`/`deploy.json` 或 `<project>.yaml`/`<project>.json` | 从 **config/deploy.yaml.example**（或 config/deploy.json.example）**复制为 config/deploy.yaml**（或 config/deploy.json / config/<project>.yaml） |
+| Terraform 变量 | `terraform-<project>-<env>.tfvars`（无 project 时为 `terraform-<env>.tfvars`） | 从 `config/examples/terraform-<project>-<env>.tfvars.example` **复制到 config/ 并重命名** |
+| 环境 YAML | `<project>-<env>.yaml`（无 project 时为 `default-<env>.yaml`） | 从 `config/examples/<project>-<env>.yaml.example` 或 `config/examples/default-<env>.yaml.example` **复制到 config/ 并重命名** |
+| 部署配置 | `deploy.yaml`/`deploy.json` 或 `<project>.yaml`/`<project>.json` | 从 **config/examples/deploy.yaml.example** **复制为 config/deploy.yaml**（或 config/deploy.json / config/<project>.yaml） |
 
-**操作示例（以 myapp、dev 为例；仓库内示例以 lighthouse-dev 命名，复制后重命名为你的 project-env）**
+**操作示例（以 myapp、dev 为例；示例在 config/examples/，复制到 config/ 后填写实际值）**
 
 ```bash
-# 在 deploy-engine 根目录执行；以下为首次本地验证必做步骤，目标均在 config/
-cp config/deploy.yaml.example config/deploy.yaml
-cp config/terraform-lighthouse-dev.tfvars.example config/terraform-myapp-dev.tfvars
-cp config/lighthouse-dev.yaml.example config/myapp-dev.yaml
-# 无 project 时：cp config/terraform-dev.tfvars.example config/terraform-dev.tfvars
-# 无 project 时：cp config/default-dev.yaml.example config/default-dev.yaml
+# 在 deploy-engine 根目录执行；示例文件在 config/examples/，目标在 config/
+cp config/examples/deploy.yaml.example config/deploy.yaml
+cp config/examples/terraform-lighthouse-dev.tfvars.example config/terraform-myapp-dev.tfvars
+cp config/examples/lighthouse-dev.yaml.example config/myapp-dev.yaml
+# 无 project 时：cp config/examples/terraform-dev.tfvars.example config/terraform-dev.tfvars
+# 无 project 时：cp config/examples/default-dev.yaml.example config/default-dev.yaml
 ```
 
 - **tfvars 必填**：`instance_password`（至少 8 位）；建议使用环境变量 **TF_VAR_instance_password**，则 tfvars 中可写占位或省略。
@@ -119,14 +119,14 @@ make down <project> <env>
 | Terraform 变量 | `terraform-<project>-<env>.tfvars`（无 project 时为 `terraform-<env>.tfvars`） |
 | 环境 YAML | `<project>-<env>.yaml`（无 project 时为 `default-<env>.yaml`） |
 
-从 deploy-engine 的示例文件**复制到业务仓 config/ 并重命名**（不要直接使用 .example）。例如（以 myapp、dev 为例；仓库内示例为 lighthouse-dev，复制后重命名）：
+从 deploy-engine 的 **config/examples/** 复制到业务仓 config/ 并重命名（不要直接使用 .example）。例如（以 myapp、dev 为例）：
 
 ```bash
 # 在业务仓根目录执行，假设 deploy-engine 在子目录 deploy-engine
-cp deploy-engine/config/terraform-lighthouse-dev.tfvars.example config/terraform-myapp-dev.tfvars
-cp deploy-engine/config/lighthouse-dev.yaml.example config/myapp-dev.yaml
-cp deploy-engine/config/deploy.yaml.example config/deploy.yaml
-# 编辑 config/terraform-myapp-dev.tfvars（instance_password 等）、config/myapp-dev.yaml
+cp deploy-engine/config/examples/deploy.yaml.example config/deploy.yaml
+cp deploy-engine/config/examples/terraform-lighthouse-dev.tfvars.example config/terraform-myapp-dev.tfvars
+cp deploy-engine/config/examples/lighthouse-dev.yaml.example config/myapp-dev.yaml
+# 编辑 config/terraform-myapp-dev.tfvars（instance_password、ram_role_name 等）、config/myapp-dev.yaml
 ```
 
 ### 2.3 执行步骤
@@ -189,5 +189,5 @@ CONFIG_ROOT=$(pwd)/config make -C deploy-engine kubeconfig <project> <env>
 
 ## 参考
 
-- **配置与扁平命名**：见《配置说明》；示例文件在 deploy-engine 的 `config/terraform-*.tfvars.example`、`config/*-dev.yaml.example`。
+- **配置与扁平命名**：见《配置说明》；示例文件在 deploy-engine 的 `config/examples/`（可安全提交 GitHub，不含敏感信息）。
 - **失败诊断**：见 README「常见问题与排错」及 [Aliyun 驱动 README](pkg/provider/aliyun/README.md) 中「失败时检查顺序」。

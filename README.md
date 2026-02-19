@@ -26,13 +26,13 @@ deploy-engine/
 │   ├── terraform/alicloud/   # 阿里云 Terraform（VPC、安全组、NAS、OSS、ECS）
 │   ├── bootstrap/scripts/    # user-data、K3s 引导脚本
 │   └── scripts/             # get-kubeconfig.sh 等
-├── config/                   # 扁平命名示例：deploy.yaml.example、terraform-*.tfvars.example、*-dev.yaml.example
+├── config/                   # 实际配置目录；示例在 config/examples/（可安全提交 GitHub）
 ├── cmd/deploy-engine/       # CLI
 ├── pkg/                     # config、orchestrator、state、provider
 └── docs/
 ```
 
-**配置与示例均在 config/**。本仓验证时请复制 `config/deploy.yaml.example` 为 `config/deploy.yaml` 后执行 make。配置应放在 **ConfigRoot**（本仓即 config/，或应用仓的 config/），不要求在 deploy-engine 根目录维护业务配置，见《配置说明》。
+**示例在 config/examples/**（可安全提交 GitHub）；**实际配置在 config/**。本仓验证时请从 `config/examples/` 复制示例到 `config/` 并填写实际值后执行 make，见《验证此模块逻辑》。配置应放在 **ConfigRoot**（本仓即 config/，或应用仓的 config/），不要求在 deploy-engine 根目录维护业务配置，见《配置说明》。
 
 ## 前置条件
 
@@ -78,12 +78,12 @@ ECS 首次启动时，user-data 会从 OSS 下载初始化脚本（`scripts/tita
 
 **第一步**：克隆本仓库并进入 deploy-engine 根目录。
 
-**第二步**：在 **ConfigRoot**（本仓即 **config/**）下准备部署配置、tfvars 与环境 YAML（扁平命名）。例如 project=lighthouse、env=dev：
+**第二步**：从 **config/examples/** 复制示例到 **config/** 并填写（扁平命名）。例如 project=lighthouse、env=dev：
 
 ```bash
-cp config/deploy.yaml.example config/deploy.yaml
-cp config/terraform-lighthouse-dev.tfvars.example config/terraform-lighthouse-dev.tfvars
-cp config/lighthouse-dev.yaml.example config/lighthouse-dev.yaml
+cp config/examples/deploy.yaml.example config/deploy.yaml
+cp config/examples/terraform-lighthouse-dev.tfvars.example config/terraform-lighthouse-dev.tfvars
+cp config/examples/lighthouse-dev.yaml.example config/lighthouse-dev.yaml
 ```
 
 编辑 `config/terraform-lighthouse-dev.tfvars`，**必填** `instance_password`（至少 8 位）；建议使用环境变量 `TF_VAR_instance_password`。其余如 `region`、`instance_type`、`enable_spot`、`spot_price_limit` 等可选。
@@ -118,7 +118,7 @@ make down lighthouse dev
 | `make down <project> <env>` | 销毁并删除对应 kubeconfig |
 | `make kubeconfig <project> <env>` | 将 kubeconfig 输出到 stdout |
 
-配置：若设置 `CONFIG_ROOT` 则使用 `$(CONFIG_ROOT)/<project>.yaml` 或 `.json` 或 `deploy.yaml`/`deploy.json`；否则本仓默认使用 **config/** 下 `config/deploy.yaml` 等（请从 config/deploy.yaml.example 复制为 config/deploy.yaml）。部署配置支持 .yaml/.yml/.json。
+配置：若设置 `CONFIG_ROOT` 则使用 `$(CONFIG_ROOT)/<project>.yaml` 或 `deploy.yaml`/`deploy.json`；否则本仓默认使用 **config/** 下 `config/deploy.yaml` 等（请从 config/examples/ 复制示例到 config/ 并填写）。部署配置支持 .yaml/.yml/.json。
 
 ### 示例场景
 

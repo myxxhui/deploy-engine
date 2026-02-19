@@ -7,7 +7,7 @@
 
 ## 两种配置的职责
 
-- **deploy 配置（Merged）**：执行 deploy 时传入 `-config=<文件>`，支持 **.yaml/.yml/.json**；配置经 `Merge()` 后 **Merged 作为 Terraform 变量来源**。引擎调用 `ToAliyunTerraformVars(...)` 生成变量（含 project、config_file 绝对路径）并先于 tfvars 传入 Terraform。文件中的 default/env/user_override 驱动基础设施（region、instance_type、enable_spot 等）。按项目可放置为 ConfigRoot 下的 `<project>.yaml`/`<project>.json` 或 `deploy.yaml`/`deploy.json`。仓库提供 **config/deploy.yaml.example** 作为默认示例。
+- **deploy 配置（Merged）**：执行 deploy 时传入 `-config=<文件>`，支持 **.yaml/.yml/.json**；配置经 `Merge()` 后 **Merged 作为 Terraform 变量来源**。引擎调用 `ToAliyunTerraformVars(...)` 生成变量（含 project、config_file 绝对路径）并先于 tfvars 传入 Terraform。文件中的 default/env/user_override 驱动基础设施（region、instance_type、enable_spot 等）。按项目可放置为 ConfigRoot 下的 `<project>.yaml`/`<project>.json` 或 `deploy.yaml`/`deploy.json`。仓库提供 **config/examples/deploy.yaml.example** 作为默认示例。
 - **terraform tfvars**：位于 **ConfigRoot 下**，用于本地覆盖或敏感项占位。**扁平命名**：`terraform-<project>-<env>.tfvars`（无 project 时为 `terraform-<env>.tfvars`）。部署时在 Merged 生成的变量之后作为 `-var-file` 传入，tfvars 中同名变量会覆盖 Merged。必填项如 `instance_password`（建议通过环境变量 `TF_VAR_instance_password` 注入）。兼容旧路径：若扁平文件不存在，会回退到 `config/environments/<env>/terraform.tfvars` 并打 deprecation 提示。
 - **环境 YAML（config_file）**：未指定时由引擎按 project+env 推导**绝对路径**并传入 Terraform。**扁平命名**：有 project 时为 ConfigRoot 下的 `<project>-<env>.yaml`，无 project 时为 `default-<env>.yaml`。本模块仅使用该 YAML 中 global/registry 等 Terraform 所需字段；其他组件由外部 titan-stack 等消费。
 
@@ -37,8 +37,8 @@
 
 ## 按项目准备配置（在 ConfigRoot 下）
 
-- **Make**：若设置 `CONFIG_ROOT`，则 `-config` 按优先级使用 `$(CONFIG_ROOT)/$(PROJECT).yaml`、`$(PROJECT).json` 或 `deploy.yaml`/`deploy.json`；否则本仓默认使用 **config/** 下 `config/$(PROJECT).yaml`/`.yml`/`.json` 或 `config/deploy.yaml`/`config/deploy.yml`/`config/deploy.json`（请从 **config/deploy.yaml.example** 复制为 config/deploy.yaml 后使用）。
-- **建议步骤**：在 ConfigRoot 下放置 `deploy.yaml`/`deploy.json` 或 `<project>.yaml`/`<project>.json`，复制 `config/terraform-<project>-<env>.tfvars.example` 为 `terraform-<project>-<env>.tfvars` 并填写；复制 `config/<project>-<env>.yaml.example` 为 `<project>-<env>.yaml`。
+- **Make**：若设置 `CONFIG_ROOT`，则 `-config` 按优先级使用 `$(CONFIG_ROOT)/$(PROJECT).yaml`、`$(PROJECT).json` 或 `deploy.yaml`/`deploy.json`；否则本仓默认使用 **config/** 下 `config/deploy.yaml` 等（请从 **config/examples/deploy.yaml.example** 复制为 config/deploy.yaml 后使用）。
+- **建议步骤**：从 **config/examples/** 复制示例到 **config/** 并填写：`deploy.yaml.example` → `config/deploy.yaml`；`terraform-<project>-<env>.tfvars.example` → `config/terraform-<project>-<env>.tfvars`；`<project>-<env>.yaml.example` → `config/<project>-<env>.yaml`。
 
 ## Terraform 变量（阿里云）
 
@@ -66,6 +66,6 @@ cp config/environments/dev/lighthouse-dev.yaml config/lighthouse-dev.yaml
 
 ## 示例 deploy 配置
 
-YAML 示例见 **config/deploy.yaml.example**（推荐）；等价的 JSON 见 **config/deploy.json.example**。结构包含 `deployment_id`、`provider_name`、`default`（resource/env/deployment）、`user_override` 等。
+YAML 示例见 **config/examples/deploy.yaml.example**。结构包含 `deployment_id`、`provider_name`、`default`（resource/env/deployment）、`user_override` 等。
 
 部署前在 ConfigRoot 下准备好 `terraform-<project>-<env>.tfvars`（含 `instance_password` 等）与 `<project>-<env>.yaml`（或 `default-<env>.yaml`）。

@@ -1,0 +1,19 @@
+# ==============================================================================
+# Terraform 变量示例：terraform-<env>.tfvars（无 project 时）
+# ==============================================================================
+# 复制到 config/ 并重命名为 terraform-dev.tfvars 后填写实际值
+# 敏感项：instance_password 建议使用环境变量 TF_VAR_instance_password 注入
+# ==============================================================================
+
+env_id            = "dev"
+region            = "cn-hongkong"
+instance_type     = "ecs.u1-c1m4.xlarge"
+instance_password = "Hui123123!!"
+vpc_cidr          = "10.0.0.0/16"
+vswitch_cidr      = "10.0.1.0/24"
+enable_spot       = true
+spot_strategy     = "SpotAsPriceGo"
+spot_price_limit  = 0.5
+eip_bandwidth     = 100
+disk_category     = "cloud"
+ram_role_name     = ""

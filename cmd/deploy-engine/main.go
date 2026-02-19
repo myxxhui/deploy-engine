@@ -130,8 +130,13 @@ func main() {
 	case "destroy":
 		s, err := loadState(*statePath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "state: %v\n", err)
-			os.Exit(1)
+			// 无 state 文件时，FULL_DESTROY=1 且指定了 project 则仍可完整销毁（按 tfvars 清理资源）
+			if os.Getenv("FULL_DESTROY") != "" && *project != "" {
+				s = &state.State{ProviderName: *providerName, Project: *project, EnvID: *envID, ClusterCtx: nil}
+			} else {
+				fmt.Fprintf(os.Stderr, "state: %v\n", err)
+				os.Exit(1)
+			}
 		}
 		env := s.EnvID
 		if env == "" {

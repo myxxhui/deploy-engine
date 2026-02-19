@@ -13,7 +13,8 @@ locals {
   )
 
   project_name          = try(local.raw_config.global.project_name, local.raw_config.project_name, "deploy-engine")
-  region                = try(local.raw_config.global.infrastructure.region, local.raw_config.infrastructure.region, var.region)
+  # region 仅从 var.region（tfvars）取，不受 config_file YAML 影响，确保 tfvars 的 region 生效
+  region                = var.region
   env_id_for_bucket     = try(local.raw_config.global.env, var.env_id)
   acr_server            = try(local.raw_config.registry.server, var.acr_server, "")
   acr_namespace         = try(local.raw_config.registry.namespace, var.acr_namespace, "")

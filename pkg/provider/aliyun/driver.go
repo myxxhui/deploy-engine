@@ -76,11 +76,18 @@ func (d *Driver) tfLiveDir() string {
 	return filepath.Join(d.root(), "deploy", "terraform", "alicloud")
 }
 
-// tfVarsFile 返回实际使用的 tfvars 路径。优先扁平路径（ConfigRoot/terraform-<project>-<env>.tfvars），不存在则回退旧路径（config/environments/<env>/terraform.tfvars），命中旧路径时 usedLegacy=true。
+// tfVarsFile 返回实际使用的 tfvars 路径。优先级：① ConfigRoot/terraform-<project>-<env>.tfvars；② ConfigRoot/terraform-<env>.tfvars（无 project 或 project 级不存在时共用）；③ config/environments/<env>/terraform.tfvars（旧路径）。
 func (d *Driver) tfVarsFile() (path string, usedLegacy bool) {
 	flat := filepath.Join(d.configRoot(), config.FlatTfvarsName(d.Project, d.EnvID))
 	if _, err := os.Stat(flat); err == nil {
 		return flat, false
+	}
+	// 有 project 时，若 terraform-<project>-<env>.tfvars 不存在，回退到 terraform-<env>.tfvars
+	if d.Project != "" {
+		fallback := filepath.Join(d.configRoot(), config.FlatTfvarsName("", d.EnvID))
+		if _, err := os.Stat(fallback); err == nil {
+			return fallback, false
+		}
 	}
 	legacy := filepath.Join(d.root(), "config", "environments", d.EnvID, "terraform.tfvars")
 	if _, err := os.Stat(legacy); err == nil {
@@ -97,6 +104,62 @@ func (d *Driver) projectTfvarsPath() string {
 	p := filepath.Join(d.root(), "config", "environments", d.EnvID, "terraform."+d.Project+".tfvars")
 	if _, err := os.Stat(p); err == nil {
 		return p
+	}
+	return ""
+}
+
+// regionFromTerraformState 从 Terraform state 中解析资源的实际 region，用于 destroy 时使用正确地域的 API 端点。
+// 若 state 中资源与 tfvars 的 region 不一致，destroy 会因调用错误地域的 API 而失败。
+func (d *Driver) regionFromTerraformState(ctx context.Context, tfDir string) string {
+	cmd := exec.CommandContext(ctx, "terraform", "state", "pull")
+	cmd.Dir = tfDir
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		return ""
+	}
+	var state struct {
+		Resources []struct {
+			Instances []struct {
+				Attributes map[string]interface{} `json:"attributes"`
+			} `json:"instances"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(out, &state); err != nil {
+		return ""
+	}
+	for _, res := range state.Resources {
+		for _, inst := range res.Instances {
+			if inst.Attributes == nil {
+				continue
+			}
+			if r, ok := inst.Attributes["region_id"]; ok {
+				if s, ok := r.(string); ok && s != "" {
+					return s
+				}
+			}
+			if r, ok := inst.Attributes["region"]; ok {
+				if s, ok := r.(string); ok && s != "" {
+					return s
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// regionFromTfvars 从 tfvars 文件解析 region，供 apply 时显式传入以确保优先级。
+func regionFromTfvars(tfvarsPath string) string {
+	f, err := os.Open(tfvarsPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	re := regexp.MustCompile(`^\s*region\s*=\s*"([^"]+)"\s*$`)
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if m := re.FindStringSubmatch(sc.Text()); len(m) == 2 {
+			return m[1]
+		}
 	}
 	return ""
 }
@@ -168,7 +231,7 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		return nil, fmt.Errorf("aliyun: terraform 目录不存在: %s（请设置 DEPLOY_ENGINE_ROOT 或在模块根目录执行）", tfDir)
 	}
 	if _, err := os.Stat(tfvars); os.IsNotExist(err) {
-		return nil, fmt.Errorf("aliyun: tfvars 不存在: %s（请从 config/terraform-<project>-<env>.tfvars.example 复制并填写，或见《配置说明》迁移小节）", tfvars)
+		return nil, fmt.Errorf("aliyun: tfvars 不存在: %s（请从 config/examples/terraform-<project>-<env>.tfvars.example 复制到 config/ 并填写，或见《配置说明》）", tfvars)
 	}
 	if usedLegacy {
 		fmt.Fprintf(os.Stderr, "deploy-engine: [deprecation] 使用旧路径 %s，请迁移到扁平路径 %s，下一大版本将仅支持扁平路径。\n", tfvars, filepath.Join(d.configRoot(), config.FlatTfvarsName(d.Project, d.EnvID)))
@@ -226,6 +289,10 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 			}
 		}
 		applyArgs = append(applyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+d.EnvID)
+		// 确保 tfvars 中的 region 覆盖 Merged，避免被 config_file YAML 等覆盖
+		if r := regionFromTfvars(tfvars); r != "" {
+			applyArgs = append(applyArgs, "-var=region="+r)
+		}
 
 		// #region agent log
 		agentLog("driver.go:Up:before-apply", "calling terraform apply", "H1", map[string]interface{}{"tfDir": tfDir})
@@ -325,7 +392,20 @@ func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) 
 	if p := d.projectTfvarsPath(); p != "" {
 		destroyArgs = append(destroyArgs, "-var-file="+p)
 	}
-	destroyArgs = append(destroyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+envID, "-var=project="+project, "-var=config_file="+configFileAbs, "-target=module.ecs", "-auto-approve")
+	fullDestroy := strings.ToLower(os.Getenv("FULL_DESTROY")) == "1" || strings.ToLower(os.Getenv("FULL_DESTROY")) == "true"
+	if !fullDestroy {
+		destroyArgs = append(destroyArgs, "-target=module.ecs")
+	} else {
+		fmt.Fprintln(os.Stderr, "deploy-engine: FULL_DESTROY=1，完整销毁（VPC/NAS/OSS/ECS 等），下次 deploy 将按 tfvars 的 region 重新创建")
+	}
+	destroyArgs = append(destroyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+envID, "-var=project="+project, "-var=config_file="+configFileAbs)
+	// destroy 必须使用 state 中资源的实际 region，否则 tfvars 改过 region 后 provider 会调用错误地域的 API 导致销毁失败
+	if region := d.regionFromTerraformState(ctx, tfDir); region != "" {
+		destroyArgs = append(destroyArgs, "-var=region="+region)
+	} else if region := regionFromTfvars(tfvars); region != "" {
+		destroyArgs = append(destroyArgs, "-var=region="+region)
+	}
+	destroyArgs = append(destroyArgs, "-auto-approve")
 	err := d.runTerraform(ctx, tfDir, destroyArgs, nil)
 	if err != nil {
 		return fmt.Errorf("aliyun: terraform destroy: %w", err)

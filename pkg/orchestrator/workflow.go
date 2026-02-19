@@ -106,8 +106,9 @@ func (e *Engine) runStepDeploy(ctx context.Context, dep *config.DeploymentSpec, 
 }
 
 // Destroy 根据状态执行反向销毁（Terraform destroy）。
+// 当 s.ClusterCtx 为 nil 时仍调用 Provider.Down，以便 FULL_DESTROY=1 时无 state 文件也能完整销毁。
 func (e *Engine) Destroy(ctx context.Context, s *state.State) error {
-	if s == nil || s.ClusterCtx == nil {
+	if s == nil {
 		return nil
 	}
 	return e.Provider.Down(ctx, s.ClusterCtx)

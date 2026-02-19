@@ -56,9 +56,9 @@ variable "spot_price_limit" {
 }
 
 variable "disk_category" {
-  description = "系统盘类型（部分地域不支持 cloud_essd，可改为 cloud_efficiency）"
+  description = "系统盘类型（cloud 兼容性最好；部分地域/规格不支持 cloud_efficiency/cloud_essd）"
   type        = string
-  default     = "cloud_efficiency"
+  default     = "cloud"
 }
 
 variable "disk_size" {

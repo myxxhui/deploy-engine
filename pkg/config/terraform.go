@@ -67,7 +67,7 @@ func ToAliyunTerraformVars(merged *LayerConfig, envID, instancePassword, project
 		InstanceType:     "ecs.u1-c1m4.xlarge",
 		SpotStrategy:     "SpotAsPriceGo",
 		SpotPriceLimit:   0.5,
-		DiskCategory:     "cloud_essd",
+		DiskCategory:     "cloud",
 		DiskSize:         100,
 		EIPBandwidth:     100,
 	}
