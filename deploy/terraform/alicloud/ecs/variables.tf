@@ -54,7 +54,7 @@ variable "spot_price_limit" {
 }
 
 variable "disk_category" {
-  description = "系统盘类型（IoOptimized/异构实例建议 cloud_efficiency，兼容性更好）"
+  description = "系统盘类型（IoOptimized 实例仅支持 cloud_efficiency/cloud_ssd；非 IoOptimized 可用 cloud）"
   type        = string
   default     = "cloud_efficiency"
 }

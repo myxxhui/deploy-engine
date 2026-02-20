@@ -1,0 +1,912 @@
+{
+  "version": 4,
+  "terraform_version": "1.9.6",
+  "serial": 21,
+  "lineage": "8c58cf2c-41ea-3c7e-af93-7b82b7adfa55",
+  "outputs": {
+    "current_ip_used": {
+      "value": "47.236.150.189",
+      "type": "string"
+    },
+    "nas_mount_domain": {
+      "value": "121b5b4a4c0-okg81.cn-hongkong.nas.aliyuncs.com",
+      "type": "string"
+    },
+    "oss_bucket_name": {
+      "value": "deploy-engine-demo-k3s-storage-dev-d0a0dee7",
+      "type": "string"
+    },
+    "oss_endpoint": {
+      "value": "deploy-engine-demo-k3s-storage-dev-d0a0dee7.oss-cn-hongkong.aliyuncs.com",
+      "type": "string"
+    },
+    "oss_region": {
+      "value": "cn-hongkong",
+      "type": "string"
+    },
+    "public_ip": {
+      "value": "47.238.101.53",
+      "type": "string"
+    },
+    "security_group_id": {
+      "value": "sg-j6c3x0ww4bmzb9vlcmhl",
+      "type": "string"
+    },
+    "vpc_id": {
+      "value": "vpc-j6c10rbng87bfayxlr0pg",
+      "type": "string"
+    },
+    "vswitch_id": {
+      "value": "vsw-j6cii8gyj8ikew12621zn",
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "module": "module.ecs",
+      "mode": "data",
+      "type": "alicloud_images",
+      "name": "ubuntu_22_04",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "action_type": null,
+            "architecture": null,
+            "dry_run": null,
+            "id": "848389420",
+            "ids": [
+              "ubuntu_22_04_x64_20G_alibase_20260119.vhd"
+            ],
+            "image_family": null,
+            "image_id": null,
+            "image_name": null,
+            "image_owner_id": null,
+            "images": [
+              {
+                "architecture": "x86_64",
+                "creation_time": "2026-01-22T11:01:18Z",
+                "description": "Kernel version is 5.15.0-164-generic, 2026.1.22",
+                "disk_device_mappings": [],
+                "id": "ubuntu_22_04_x64_20G_alibase_20260119.vhd",
+                "image_id": "ubuntu_22_04_x64_20G_alibase_20260119.vhd",
+                "image_owner_alias": "system",
+                "image_version": "v2026.1.22",
+                "is_copied": false,
+                "is_self_shared": "",
+                "is_subscribed": false,
+                "is_support_io_optimized": true,
+                "name": "ubuntu_22_04_x64_20G_alibase_20260119.vhd",
+                "os_name": "Ubuntu  22.04 64位",
+                "os_name_en": "Ubuntu  22.04 64 bit",
+                "os_type": "linux",
+                "platform": "Ubuntu",
+                "product_code": "",
+                "progress": "100%",
+                "size": 20,
+                "state": "Available",
+                "status": "Available",
+                "tags": {},
+                "usage": "instance"
+              }
+            ],
+            "instance_type": "ecs.u1-c1m4.xlarge",
+            "is_support_cloud_init": null,
+            "is_support_io_optimized": null,
+            "most_recent": true,
+            "name_regex": "^ubuntu_22_04_x64",
+            "os_type": null,
+            "output_file": null,
+            "owners": "system",
+            "resource_group_id": null,
+            "snapshot_id": null,
+            "status": "Available",
+            "tags": null,
+            "timeouts": null,
+            "usage": null
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    },
+    {
+      "module": "module.ecs",
+      "mode": "data",
+      "type": "alicloud_vswitches",
+      "name": "existing",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": []
+    },
+    {
+      "module": "module.ecs",
+      "mode": "managed",
+      "type": "alicloud_eip_address",
+      "name": "on_demand",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": []
+    },
+    {
+      "module": "module.ecs",
+      "mode": "managed",
+      "type": "alicloud_eip_address",
+      "name": "spot",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "activity_id": null,
+            "address_name": "",
+            "allocation_id": "eip-j6cin8xfqntp88x13gisp",
+            "auto_pay": null,
+            "bandwidth": "100",
+            "create_time": "2026-02-20T07:16:14Z",
+            "deletion_protection": false,
+            "description": "",
+            "high_definition_monitor_log_status": "OFF",
+            "id": "eip-j6cin8xfqntp88x13gisp",
+            "instance_charge_type": "PostPaid",
+            "internet_charge_type": "PayByTraffic",
+            "ip_address": "47.238.101.53",
+            "isp": "BGP",
+            "log_project": null,
+            "log_store": null,
+            "mode": "NAT",
+            "name": "",
+            "netmode": "public",
+            "payment_type": "PayAsYouGo",
+            "period": null,
+            "pricing_cycle": null,
+            "public_ip_address_pool_id": null,
+            "resource_group_id": "rg-acfm2bxtcxyibwi",
+            "security_protection_types": null,
+            "status": "Available",
+            "tags": null,
+            "timeouts": null,
+            "zone": null
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo1NDAwMDAwMDAwMDAsImRlbGV0ZSI6NTQwMDAwMDAwMDAwLCJ1cGRhdGUiOjU0MDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "module": "module.ecs",
+      "mode": "managed",
+      "type": "alicloud_instance",
+      "name": "on_demand",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": []
+    },
+    {
+      "module": "module.nas",
+      "mode": "data",
+      "type": "alicloud_nas_access_groups",
+      "name": "existing",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "access_group_name": null,
+            "access_group_type": "Vpc",
+            "description": null,
+            "file_system_type": "standard",
+            "groups": [
+              {
+                "access_group_name": "deploy-engine-demo_nas_group_dev",
+                "access_group_type": "Vpc",
+                "description": "deploy-engine-demo_nas_dev",
+                "id": "deploy-engine-demo_nas_group_dev:standard",
+                "mount_target_count": 3,
+                "rule_count": 3,
+                "type": "Vpc"
+              }
+            ],
+            "id": "1068598142",
+            "ids": [
+              "deploy-engine-demo_nas_group_dev:standard"
+            ],
+            "name_regex": "^deploy-engine-demo_nas_group_dev$",
+            "names": [
+              "deploy-engine-demo_nas_group_dev"
+            ],
+            "output_file": null,
+            "type": null,
+            "useutc_date_time": null
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    },
+    {
+      "module": "module.nas",
+      "mode": "managed",
+      "type": "alicloud_nas_access_group",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": []
+    },
+    {
+      "module": "module.nas",
+      "mode": "managed",
+      "type": "alicloud_nas_access_rule",
+      "name": "vpc",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "access_group_name": "deploy-engine-demo_nas_group_dev",
+            "access_rule_id": "3",
+            "file_system_type": "standard",
+            "id": "deploy-engine-demo_nas_group_dev:3",
+            "ipv6_source_cidr_ip": "",
+            "priority": 1,
+            "region_id": "cn-hongkong",
+            "rw_access_type": "RDWR",
+            "source_cidr_ip": "10.0.0.0/16",
+            "timeouts": null,
+            "user_access_type": "no_squash"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjMwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.nas.alicloud_nas_access_group.main",
+            "module.nas.data.alicloud_nas_access_groups.existing"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.nas",
+      "mode": "managed",
+      "type": "alicloud_nas_file_system",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "capacity": 1048576,
+            "create_time": "2026-02-20T15:16:11CST",
+            "description": "deploy-engine-demo_nas_dev",
+            "encrypt_type": 0,
+            "file_system_type": "standard",
+            "id": "121b5b4a4c0",
+            "keytab": null,
+            "keytab_md5": null,
+            "kms_key_id": "",
+            "nfs_acl": [
+              {
+                "enabled": false
+              }
+            ],
+            "options": [],
+            "protocol_type": "NFS",
+            "recycle_bin": [
+              {
+                "enable_time": "",
+                "reserved_days": 7,
+                "secondary_size": 0,
+                "size": 0,
+                "status": "Disable"
+              }
+            ],
+            "redundancy_type": "LRS",
+            "redundancy_vswitch_ids": null,
+            "region_id": "cn-hongkong",
+            "resource_group_id": "rg-acfm2bxtcxyibwi",
+            "smb_acl": [],
+            "snapshot_id": null,
+            "status": "Running",
+            "storage_type": "Performance",
+            "tags": null,
+            "timeouts": null,
+            "vpc_id": "",
+            "vswitch_id": "",
+            "zone_id": "cn-hongkong-d"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6MTIwMDAwMDAwMDAwMCwidXBkYXRlIjo2MDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.nas",
+      "mode": "managed",
+      "type": "alicloud_nas_mount_target",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "access_group_name": "deploy-engine-demo_nas_group_dev",
+            "dual_stack": null,
+            "file_system_id": "121b5b4a4c0",
+            "id": "121b5b4a4c0:121b5b4a4c0-okg81.cn-hongkong.nas.aliyuncs.com",
+            "mount_target_domain": "121b5b4a4c0-okg81.cn-hongkong.nas.aliyuncs.com",
+            "network_type": "Vpc",
+            "security_group_id": null,
+            "status": "Active",
+            "timeouts": null,
+            "vpc_id": "vpc-j6c10rbng87bfayxlr0pg",
+            "vswitch_id": "vsw-j6cii8gyj8ikew12621zn"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoyNDAwMDAwMDAwMDAwLCJkZWxldGUiOjI0MDAwMDAwMDAwMDAsInVwZGF0ZSI6MjQwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.nas.alicloud_nas_access_group.main",
+            "module.nas.alicloud_nas_file_system.main",
+            "module.nas.data.alicloud_nas_access_groups.existing",
+            "module.vpc.alicloud_vpc.main",
+            "module.vpc.alicloud_vswitch.main",
+            "module.vpc.data.alicloud_zones.available"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.oss",
+      "mode": "managed",
+      "type": "alicloud_oss_bucket",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "access_monitor": [
+              {
+                "status": "Disabled"
+              }
+            ],
+            "acl": "private",
+            "bucket": "deploy-engine-demo-k3s-storage-dev-d0a0dee7",
+            "cors_rule": [],
+            "creation_date": "2026-02-20",
+            "extranet_endpoint": "oss-cn-hongkong.aliyuncs.com",
+            "force_destroy": true,
+            "id": "deploy-engine-demo-k3s-storage-dev-d0a0dee7",
+            "intranet_endpoint": "oss-cn-hongkong-internal.aliyuncs.com",
+            "lifecycle_rule": [
+              {
+                "abort_multipart_upload": [],
+                "enabled": true,
+                "expiration": [
+                  {
+                    "created_before_date": "",
+                    "date": "",
+                    "days": 90,
+                    "expired_object_delete_marker": null
+                  }
+                ],
+                "filter": [],
+                "id": "cleanup-old-versions",
+                "noncurrent_version_expiration": [],
+                "noncurrent_version_transition": [],
+                "prefix": "",
+                "tags": null,
+                "transitions": []
+              }
+            ],
+            "lifecycle_rule_allow_same_action_overlap": false,
+            "location": "oss-cn-hongkong",
+            "logging": [],
+            "logging_isenable": null,
+            "owner": "1657988574642393",
+            "policy": "",
+            "redundancy_type": "LRS",
+            "referer_config": [],
+            "resource_group_id": "rg-acfm2bxtcxyibwi",
+            "server_side_encryption_rule": [],
+            "storage_class": "Standard",
+            "tags": {
+              "Environment": "dev",
+              "ManagedBy": "Terraform",
+              "Name": "deploy-engine-demo-oss-k3s-storage-dev",
+              "Owner": "platform-team",
+              "Project": "deploy-engine-demo"
+            },
+            "transfer_acceleration": [],
+            "versioning": [
+              {
+                "status": "Enabled"
+              }
+            ],
+            "website": []
+          },
+          "sensitive_attributes": [],
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.oss.random_id.bucket_suffix"
+          ],
+          "create_before_destroy": true
+        }
+      ]
+    },
+    {
+      "module": "module.oss",
+      "mode": "managed",
+      "type": "alicloud_oss_bucket_acl",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "acl": "private",
+            "bucket": "deploy-engine-demo-k3s-storage-dev-d0a0dee7",
+            "id": "deploy-engine-demo-k3s-storage-dev-d0a0dee7",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjMwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.oss.alicloud_oss_bucket.main",
+            "module.oss.random_id.bucket_suffix"
+          ],
+          "create_before_destroy": true
+        }
+      ]
+    },
+    {
+      "module": "module.oss",
+      "mode": "managed",
+      "type": "alicloud_oss_bucket_object",
+      "name": "init_script",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "acl": "private",
+            "bucket": "deploy-engine-demo-k3s-storage-dev-d0a0dee7",
+            "cache_control": "",
+            "content": "#!/bin/bash\nset -euo pipefail\n\n# 配置变量（由 Terraform 传入）\nNAS_MOUNT_DOMAIN=\"121b5b4a4c0-okg81.cn-hongkong.nas.aliyuncs.com\"\nPROJECT_NAME=\"deploy-engine-demo\"\nNAS_MOUNT_POINT=\"/mnt/titan-data\"\nK3S_TOKEN_FILE=\"${NAS_MOUNT_POINT}/k3s-token\"\nOSS_BUCKET_NAME=\"\"\nOSS_ENDPOINT=\"\"\nOSS_REGION=\"cn-hongkong\"\nK3S_STORAGE_PATH=\"/var/lib/rancher/k3s/storage\"\nACR_SERVER=\"\"\nACR_NAMESPACE=\"\"\n\n# 日志函数（统一日志路径）\nlog() {\n  echo \"[$$(date +'%Y-%m-%d %H:%M:%S')] $$*\" | tee -a /var/log/titan-init.log\n}\n\nlog \"=== Titan Infra Hub 极速串行初始化开始 ===\"\n\n# 注意：SSH 服务启动已移至 runcmd 的第一项，确保即使初始化失败也能远程登录\n\n# ==============================================================================\n# 第一优先级：彻底禁用 apt-daily 服务，防止磁盘锁竞争\n# ==============================================================================\nlog \"[优先级 1] 禁用 apt-daily 服务，防止系统更新干扰...\"\nsystemctl stop apt-daily.service apt-daily-upgrade.service 2\u003e/dev/null || true\nsystemctl disable apt-daily.service apt-daily-upgrade.service 2\u003e/dev/null || true\nsystemctl stop apt-daily.timer apt-daily-upgrade.timer 2\u003e/dev/null || true\nsystemctl disable apt-daily.timer apt-daily-upgrade.timer 2\u003e/dev/null || true\nsystemctl mask apt-daily.service apt-daily-upgrade.service 2\u003e/dev/null || true\nsystemctl mask apt-daily.timer apt-daily-upgrade.timer 2\u003e/dev/null || true\nlog \"✅ apt-daily 服务已彻底禁用\"\n\n# ==============================================================================\n# 第二优先级：NAS 挂载和目录创建（不依赖网络下载，优先完成）\n# ==============================================================================\nlog \"[优先级 2] 挂载 NAS 存储并创建必要目录（不依赖网络）...\"\n\n# 确保 NFS 工具已安装\nif ! command -v mount.nfs \u003e/dev/null 2\u003e\u00261 \u0026\u0026 [ ! -f /sbin/mount.nfs ]; then\n  log \"安装 nfs-common 包...\"\n  export DEBIAN_FRONTEND=noninteractive\n  apt-get update -qq \u003e/dev/null 2\u003e\u00261 || true\n  apt-get install -y -qq nfs-common \u003e/dev/null 2\u003e\u00261 || {\n    log \"⚠️  nfs-common 安装失败，尝试继续...\"\n  }\n  log \"✅ nfs-common 安装完成\"\nfi\n\n# 创建挂载点\nmkdir -p \"${NAS_MOUNT_POINT}\"\n\n# 重试挂载逻辑（至少重试 15 次）\nMOUNT_RETRY_COUNT=0\nMOUNT_MAX_RETRIES=15\nMOUNT_SUCCESS=false\n\nwhile [ ${MOUNT_RETRY_COUNT} -lt ${MOUNT_MAX_RETRIES} ]; do\n  if mount -t nfs -o vers=4.0,noresvport \"${NAS_MOUNT_DOMAIN}:/\" \"${NAS_MOUNT_POINT}\" 2\u003e\u00261 | tee -a /var/log/titan-init.log; then\n    log \"✅ NAS 挂载成功！\"\n    MOUNT_SUCCESS=true\n    break\n  fi\n  MOUNT_RETRY_COUNT=$((MOUNT_RETRY_COUNT + 1))\n  log \"NAS 挂载失败，重试 ${MOUNT_RETRY_COUNT}/${MOUNT_MAX_RETRIES}... (可能因为网络初始化未完成)\"\n  sleep 3\ndone\n\nif [ \"${MOUNT_SUCCESS}\" != \"true\" ]; then\n  log \"❌ 错误: NAS 挂载失败，已达到最大重试次数\"\n  exit 1\nfi\n\n# 确保挂载点在重启后自动挂载\nif ! grep -q \"${NAS_MOUNT_DOMAIN}\" /etc/fstab 2\u003e/dev/null; then\n  echo \"${NAS_MOUNT_DOMAIN}:/ ${NAS_MOUNT_POINT} nfs vers=4.0,noresvport,auto,soft,timeo=30,retrans=3 0 0\" \u003e\u003e /etc/fstab\nfi\n\n# 创建必要目录（不依赖网络）\nmkdir -p \"${NAS_MOUNT_POINT}/k3s-backup\"\nlog \"✅ NAS 备份目录已创建\"\n\n# 检查并恢复 K3s Token（防数据丢失：Token 持久化）\nlog \"[优先级 2] 检查 K3s Token 持久化...\"\nK3S_TOKEN=\"\"\nif [ -f \"${K3S_TOKEN_FILE}\" ]; then\n  K3S_TOKEN=$(cat \"${K3S_TOKEN_FILE}\")\n  log \"✅ 从 NAS 恢复 K3s Token: ${K3S_TOKEN}...\"\nelse\n  K3S_TOKEN=$(openssl rand -hex 32)\n  echo \"${K3S_TOKEN}\" \u003e \"${K3S_TOKEN_FILE}\"\n  log \"✅ 生成新的 K3s Token 并保存到 NAS: ${K3S_TOKEN}...\"\nfi\n\n# ==============================================================================\n# 第三优先级：极速模式安装 K3s（使用国内镜像加速）\n# ==============================================================================\nlog \"[优先级 3] 开始极速安装 K3s（系统磁盘运行，不依赖 OSS）...\"\n\n# 获取公网 IP（用于 TLS SAN）\nlog \"获取公网 IP 地址（用于 K3s TLS 证书）...\"\nPUBLIC_IP=\"\"\nRETRY_COUNT=0\nMAX_RETRIES=10\n\nwhile [ -z \"${PUBLIC_IP}\" ] \u0026\u0026 [ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]; do\n  PUBLIC_IP=$(curl -s --max-time 5 https://api.ipify.org || true)\n  if [ -n \"${PUBLIC_IP}\" ]; then\n    log \"✅ 成功获取公网 IP: ${PUBLIC_IP}\"\n    break\n  fi\n  RETRY_COUNT=$((RETRY_COUNT + 1))\n  log \"获取公网 IP 失败，重试 ${RETRY_COUNT}/${MAX_RETRIES}...\"\n  sleep 2\ndone\n\nif [ -z \"${PUBLIC_IP}\" ]; then\n  log \"⚠️ 警告: 无法获取公网 IP，使用 127.0.0.1\"\n  PUBLIC_IP=\"127.0.0.1\"\nfi\n\n# ==============================================================================\n# [新增步骤] 自动恢复逻辑：检查是否有\"前世记忆\"\n# ==============================================================================\nlog \"[中间步骤] 检查是否存在历史快照，准备恢复...\"\n\n# 确保 NAS 挂载点可用\nif [ -d \"${NAS_MOUNT_POINT}\" ] \u0026\u0026 mountpoint -q \"${NAS_MOUNT_POINT}\" 2\u003e/dev/null; then\n  # 寻找 NAS 中最新的快照文件（优先 on-demand-*，然后是 snapshot-shutdown-*）\n  LATEST_SNAPSHOT=\"\"\n  \n  # 优先查找定时快照（命名格式：on-demand-* 或其他 K3s 自动生成的快照）\n  if ls \"${NAS_MOUNT_POINT}/k3s-backup\"/on-demand-* 1\u003e/dev/null 2\u003e\u00261; then\n    LATEST_SNAPSHOT=$(ls -t \"${NAS_MOUNT_POINT}/k3s-backup\"/on-demand-* 2\u003e/dev/null | head -n1)\n  fi\n  \n  # 如果找不到定时快照，找关机快照（临终遗言）\n  if [ -z \"${LATEST_SNAPSHOT}\" ]; then\n    if ls \"${NAS_MOUNT_POINT}/k3s-backup\"/snapshot-shutdown-* 1\u003e/dev/null 2\u003e\u00261; then\n      LATEST_SNAPSHOT=$(ls -t \"${NAS_MOUNT_POINT}/k3s-backup\"/snapshot-shutdown-* 2\u003e/dev/null | head -n1)\n    fi\n  fi\n  \n  # 如果还是找不到，尝试查找任何快照文件（K3s 默认命名格式）\n  if [ -z \"${LATEST_SNAPSHOT}\" ]; then\n    if ls \"${NAS_MOUNT_POINT}/k3s-backup\"/*-etcd-snapshot* 1\u003e/dev/null 2\u003e\u00261; then\n      LATEST_SNAPSHOT=$(ls -t \"${NAS_MOUNT_POINT}/k3s-backup\"/*-etcd-snapshot* 2\u003e/dev/null | head -n1)\n    fi\n  fi\n\n  # 只有当本地没有数据（全新实例）且 NAS 有快照时，才执行恢复\n  if [ ! -d \"/var/lib/rancher/k3s/server/db\" ] \u0026\u0026 [ -n \"${LATEST_SNAPSHOT}\" ] \u0026\u0026 [ -f \"${LATEST_SNAPSHOT}\" ]; then\n    log \"♻️ 检测到历史快照: ${LATEST_SNAPSHOT}，开始执行集群状态恢复...\"\n    \n    # 1. 先下载 K3s 二进制文件（但不启动服务）\n    log \"下载 K3s 二进制文件（用于恢复）...\"\n    export INSTALL_K3S_MIRROR=cn\n    export INSTALL_K3S_VERSION=v1.31.4+k3s1\n    curl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | INSTALL_K3S_SKIP_ENABLE=true sh -\n    \n    if [ $$? -eq 0 ] \u0026\u0026 [ -f /usr/local/bin/k3s ]; then\n      log \"✅ K3s 二进制文件下载成功\"\n      \n      # 2. 执行恢复命令（关键！）\n      log \"执行集群状态恢复...\"\n      /usr/local/bin/k3s server \\\n        --cluster-reset \\\n        --cluster-reset-restore-path \"${LATEST_SNAPSHOT}\" \\\n        --token \"${K3S_TOKEN}\" \\\n        --data-dir /var/lib/rancher/k3s 2\u003e\u00261 | tee -a /var/log/titan-init.log\n      \n      RESTORE_EXIT_CODE=$$?\n      \n      if [ ${RESTORE_EXIT_CODE} -eq 0 ]; then\n        log \"✅ 集群状态已成功从快照恢复！\"\n        pkill -f \"k3s server\" 2\u003e/dev/null || true\n        sleep 2\n      else\n        log \"⚠️ 警告：快照恢复失败（退出码: ${RESTORE_EXIT_CODE}），将尝试作为全新集群启动...\"\n        rm -rf /var/lib/rancher/k3s/server/db/partial 2\u003e/dev/null || true\n      fi\n    else\n      log \"⚠️ 警告：K3s 二进制下载失败，将作为全新集群启动...\"\n    fi\n  else\n    if [ -d \"/var/lib/rancher/k3s/server/db\" ]; then\n      log \"🔄 检测到本地已有集群数据，将继续使用现有集群\"\n    elif [ -z \"${LATEST_SNAPSHOT}\" ]; then\n      log \"🆕 未检测到历史快照，将作为全新集群启动\"\n    else\n      log \"⚠️ 警告：检测到快照但文件不存在或不可读，将作为全新集群启动\"\n    fi\n  fi\nelse\n  log \"⚠️ 警告：NAS 挂载点不可用，跳过快照恢复检查\"\nfi\n\n# 极速模式安装 K3s（本地运行 + NAS 备份）\nlog \"使用极速模式安装 K3s（本地 SSD 运行，NAS 存储备份）...\"\n\n# 验证 NAS 挂载点可用（用于快照备份）\nif [ ! -d \"${NAS_MOUNT_POINT}\" ] || ! mountpoint -q \"${NAS_MOUNT_POINT}\" 2\u003e/dev/null; then\n  log \"❌ 错误: NAS 挂载点 ${NAS_MOUNT_POINT} 不可用，无法存储快照\"\n  exit 1\nfi\n\n# 确保备份目录存在\nif [ ! -d \"${NAS_MOUNT_POINT}/k3s-backup\" ]; then\n  mkdir -p \"${NAS_MOUNT_POINT}/k3s-backup\"\n  log \"✅ 创建 K3s 备份目录: ${NAS_MOUNT_POINT}/k3s-backup\"\nfi\n\n# 验证备份目录可写\nif ! touch \"${NAS_MOUNT_POINT}/k3s-backup/.write-test\" 2\u003e/dev/null; then\n  log \"❌ 错误: K3s 备份目录不可写: ${NAS_MOUNT_POINT}/k3s-backup\"\n  exit 1\nfi\nrm -f \"${NAS_MOUNT_POINT}/k3s-backup/.write-test\"\nlog \"✅ NAS 备份目录可用且可写\"\n\n# ==============================================================================\n# K3s 使用默认镜像源（不再配置 ACR 重定向）\n# ==============================================================================\n# 注意：K3s 将使用默认的 rancher.io 镜像源，不进行任何镜像重定向配置\n\nexport INSTALL_K3S_SKIP_DOWNLOAD=false\nexport INSTALL_K3S_MIRROR=cn\nexport INSTALL_K3S_VERSION=v1.31.4+k3s1\nexport K3S_TOKEN=\"${K3S_TOKEN}\"\n\nlog \"执行 K3s 安装脚本（本地 IO 运行，NAS 存储备份，30 分钟快照策略，镜像 GC 调优）...\"\nK3S_INSTALL_EXIT_CODE=0\n\n# 注意：不再使用 --system-default-registry，K3s 将使用默认镜像源\n\ncurl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | sh -s - server \\\n  --token \"${K3S_TOKEN}\" \\\n  --tls-san \"${PUBLIC_IP}\" \\\n  --tls-san \"$$(hostname)\" \\\n  --disable traefik \\\n  --disable servicelb \\\n  --write-kubeconfig-mode 644 \\\n  --etcd-snapshot-dir \"${NAS_MOUNT_POINT}/k3s-backup\" \\\n  --etcd-snapshot-schedule-cron \"*/30 * * * *\" \\\n  --etcd-snapshot-retention 48 \\\n  --kubelet-arg=\"image-gc-high-threshold=70\" \\\n  --kubelet-arg=\"image-gc-low-threshold=50\" || K3S_INSTALL_EXIT_CODE=$$?\n\nif [ ${K3S_INSTALL_EXIT_CODE} -ne 0 ]; then\n  log \"❌ 错误: K3s 安装脚本执行失败 (退出码: ${K3S_INSTALL_EXIT_CODE})\"\n  exit 1\nfi\n\nlog \"✅ K3s 安装脚本执行完成，等待服务启动...\"\n\n# 等待 K3s 服务启动（最多等待 3 分钟）\nlog \"等待 K3s 服务启动...\"\nSERVICE_STARTED=false\nfor i in {1..36}; do\n  if systemctl is-active --quiet k3s 2\u003e/dev/null; then\n    if curl -k -s https://127.0.0.1:6443/healthz \u003e/dev/null 2\u003e\u00261; then\n      log \"✅ K3s 服务已启动且 API 服务器就绪（等待了 $((i * 5)) 秒）\"\n      SERVICE_STARTED=true\n      break\n    else\n      log \"K3s 服务已启动，但 API 服务器尚未就绪，继续等待...\"\n    fi\n  fi\n  if [ $((i % 6)) -eq 0 ]; then\n    log \"等待 K3s 服务启动... (${i}/36) - 已等待 $((i * 5)) 秒\"\n    systemctl status k3s --no-pager -l | tail -5 || true\n    if systemctl is-failed --quiet k3s 2\u003e/dev/null; then\n      log \"⚠️ 警告: K3s 服务失败，尝试重新启动...\"\n      systemctl reset-failed k3s 2\u003e/dev/null || true\n      systemctl start k3s 2\u003e/dev/null || true\n    fi\n  fi\n  sleep 5\ndone\n\nif [ \"${SERVICE_STARTED}\" != \"true\" ]; then\n  log \"❌ 错误: K3s 服务在 3 分钟内未能启动或 API 服务器未就绪\"\n  log \"诊断信息:\"\n  systemctl status k3s --no-pager -l | head -30 || true\n  journalctl -u k3s --no-pager -n 50 || true\n  ps aux | grep k3s || true\n  curl -k -v https://127.0.0.1:6443/healthz 2\u003e\u00261 | head -10 || true\n  exit 1\nfi\n\n# 额外等待一段时间，确保 kubeconfig 文件生成\nlog \"K3s 服务已就绪，等待配置文件生成...\"\nsleep 10\n\nmkdir -p /etc/rancher/k3s\nchmod 755 /etc/rancher/k3s\n\n# 等待 K3s 配置文件生成（最多等待 3 分钟）\nlog \"等待 K3s 配置文件生成...\"\nCONFIG_GENERATED=false\nKUBECONFIG_PATH=\"\"\nfor i in {1..36}; do\n  if [ -f /etc/rancher/k3s/k3s.yaml ]; then\n    KUBECONFIG_PATH=\"/etc/rancher/k3s/k3s.yaml\"\n    log \"✅ K3s 配置文件已生成: ${KUBECONFIG_PATH}（等待了 $((i * 5)) 秒）\"\n    CONFIG_GENERATED=true\n    break\n  fi\n  if [ $((i % 6)) -eq 0 ]; then\n    log \"等待配置文件生成... (${i}/36) - 已等待 $((i * 5)) 秒\"\n    ls -la /etc/rancher/ 2\u003e/dev/null || true\n    ls -la /etc/rancher/k3s/ 2\u003e/dev/null || true\n  fi\n  sleep 5\ndone\n\nif [ \"${CONFIG_GENERATED}\" != \"true\" ]; then\n  log \"❌ 错误: K3s 配置文件在 3 分钟内未能生成\"\n  log \"诊断信息:\"\n  ls -la /etc/rancher/ 2\u003e/dev/null || true\n  systemctl status k3s --no-pager -l | head -30 || true\n  journalctl -u k3s --no-pager -n 50 | tail -30 || true\n  ls -la /var/lib/rancher/k3s/ 2\u003e/dev/null || true\n  exit 1\nfi\n\n# 增加一步：启动后立即执行一次快照测试，确保 NAS 写入正常\nlog \"测试 NAS 快照写入...\"\nsleep 15\nif /usr/local/bin/k3s etcd-snapshot save --dir \"${NAS_MOUNT_POINT}/k3s-backup\" 2\u003e/dev/null; then\n  log \"✅ 初始集群状态已成功备份到 NAS！\"\nelse\n  log \"⚠️ 警告：初始备份失败，请检查 NAS 权限（不影响集群运行）\"\nfi\n\n# 激活 Spot 实例\"临终备份\"服务\nlog \"激活 Spot 实例防抢占备份服务...\"\n# 如果服务文件不存在，则创建它（兼容从 OSS 下载的脚本场景）\nif [ ! -f /etc/systemd/system/k3s-backup-shutdown.service ]; then\n  log \"创建 k3s-backup-shutdown.service 文件...\"\n  cat \u003e /etc/systemd/system/k3s-backup-shutdown.service \u003c\u003c'EOFSERVICE'\n[Unit]\nDescription=Backup K3s Etcd Snapshot on Shutdown\nRequires=k3s.service\nAfter=k3s.service\nBefore=halt.target poweroff.target reboot.target shutdown.target\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStop=/bin/bash -c '/usr/local/bin/k3s etcd-snapshot save --dir /mnt/titan-data/k3s-backup --name snapshot-shutdown-$$(date +%%Y%%m%%d-%%H%%M%%S) \u0026\u0026 echo \"[$$(date +%%Y-%%m-%%d\\ %%H:%%M:%%S)] ✅ 关机备份成功\" || echo \"[$$(date +%%Y-%%m-%%d\\ %%H:%%M:%%S)] ⚠️ 关机备份失败\"'\nStandardOutput=journal\nStandardError=journal\nTimeoutStopSec=300\n\n[Install]\nWantedBy=multi-user.target\nEOFSERVICE\n  log \"✅ k3s-backup-shutdown.service 文件已创建\"\nfi\nsystemctl daemon-reload\nsystemctl enable k3s-backup-shutdown.service || log \"⚠️ 警告: 启用 k3s-backup-shutdown.service 失败（可能服务文件不存在）\"\nlog \"✅ 防抢占备份服务已就绪！当实例被抢占或重启时，将自动执行最后一次备份\"\n\n# 确保 kubectl 可以找到 kubeconfig（复制到 ~/.kube/config）\nlog \"配置 kubectl 使用正确的 kubeconfig...\"\nmkdir -p ~/.kube\n\nif [ -z \"${KUBECONFIG_PATH}\" ]; then\n  KUBECONFIG_PATH=\"/etc/rancher/k3s/k3s.yaml\"\nfi\n\nif [ -f \"${KUBECONFIG_PATH}\" ]; then\n  cp \"${KUBECONFIG_PATH}\" ~/.kube/config\n  chmod 600 ~/.kube/config\n  export KUBECONFIG=~/.kube/config\n  \n  KUBECONFIG_EXPORT='export KUBECONFIG=~/.kube/config'\n  \n  if ! grep -q \"KUBECONFIG\" ~/.bashrc 2\u003e/dev/null; then\n    echo \"${KUBECONFIG_EXPORT}\" \u003e\u003e ~/.bashrc\n  fi\n  \n  if ! grep -q \"KUBECONFIG\" ~/.profile 2\u003e/dev/null; then\n    echo \"${KUBECONFIG_EXPORT}\" \u003e\u003e ~/.profile\n  fi\n  \n  mkdir -p /etc/profile.d\n  echo \"${KUBECONFIG_EXPORT}\" \u003e /etc/profile.d/k3s.sh\n  chmod 644 /etc/profile.d/k3s.sh\n  \n  export KUBECONFIG=~/.kube/config\n  \n  log \"✅ Kubeconfig 已配置到 ~/.kube/config（来源: ${KUBECONFIG_PATH}）\"\n  log \"✅ KUBECONFIG 已添加到 ~/.bashrc, ~/.profile, /etc/profile.d/k3s.sh\"\nelse\n  log \"❌ 错误: kubeconfig 文件不存在 (${KUBECONFIG_PATH})，尝试其他方法...\"\n  \n  log \"等待 K3s API 服务器完全就绪...\"\n  for i in {1..12}; do\n    if curl -k -s https://127.0.0.1:6443/healthz \u003e/dev/null 2\u003e\u00261; then\n      log \"✅ K3s API 服务器已就绪（等待了 $((i * 5)) 秒）\"\n      break\n    fi\n    sleep 5\n  done\n  \n  if command -v k3s \u003e/dev/null 2\u003e\u00261; then\n    log \"尝试使用 k3s kubectl config view 生成 kubeconfig...\"\n    if k3s kubectl config view --raw \u003e ~/.kube/config 2\u003e/dev/null; then\n      chmod 600 ~/.kube/config\n      export KUBECONFIG=~/.kube/config\n      echo \"export KUBECONFIG=~/.kube/config\" \u003e\u003e ~/.bashrc\n      echo \"export KUBECONFIG=~/.kube/config\" \u003e\u003e ~/.profile\n      echo \"export KUBECONFIG=~/.kube/config\" \u003e /etc/profile.d/k3s.sh\n      chmod 644 /etc/profile.d/k3s.sh\n      log \"✅ 从 k3s kubectl 生成 kubeconfig\"\n    else\n      log \"⚠️ 警告: 无法从 k3s kubectl 生成 kubeconfig，继续尝试...\"\n      if [ -f /etc/rancher/k3s/k3s.yaml ]; then\n        cp /etc/rancher/k3s/k3s.yaml ~/.kube/config 2\u003e/dev/null || true\n        chmod 600 ~/.kube/config 2\u003e/dev/null || true\n        if [ -f ~/.kube/config ]; then\n          export KUBECONFIG=~/.kube/config\n          echo \"export KUBECONFIG=~/.kube/config\" \u003e\u003e ~/.bashrc\n          echo \"export KUBECONFIG=~/.kube/config\" \u003e\u003e ~/.profile\n          echo \"export KUBECONFIG=~/.kube/config\" \u003e /etc/profile.d/k3s.sh\n          chmod 644 /etc/profile.d/k3s.sh\n          log \"✅ 通过直接复制找到 kubeconfig\"\n        else\n          log \"❌ 错误: 所有方法都失败，无法配置 kubectl\"\n          exit 1\n        fi\n      else\n        log \"❌ 错误: 所有方法都失败，无法配置 kubectl\"\n        exit 1\n      fi\n    fi\n  else\n    log \"❌ 错误: k3s 命令不存在，无法生成 kubeconfig\"\n    exit 1\n  fi\nfi\n\n# 验证 kubectl 连接（最多重试 6 次）\nlog \"验证 kubectl 连接...\"\nKUBECTL_WORKING=false\nfor i in {1..6}; do\n  if kubectl cluster-info --request-timeout=10s \u003e/dev/null 2\u003e\u00261; then\n    log \"✅ kubectl 连接 K3s 成功（重试 ${i} 次）\"\n    KUBECTL_WORKING=true\n    break\n  fi\n  if [ ${i} -lt 6 ]; then\n    log \"kubectl 连接失败，重试 ${i}/6...\"\n    sleep 10\n  fi\ndone\n\nif [ \"${KUBECTL_WORKING}\" != \"true\" ]; then\n  log \"⚠️ 警告: kubectl 连接 K3s 失败，但继续执行\"\n  kubectl cluster-info 2\u003e\u00261 || true\n  systemctl status k3s --no-pager -l | head -10 || true\nfi\n\n# 保存 kubeconfig 到 NAS（可选）\nif [ -n \"${KUBECONFIG_PATH}\" ] \u0026\u0026 [ -f \"${KUBECONFIG_PATH}\" ]; then\n  cp \"${KUBECONFIG_PATH}\" \"${NAS_MOUNT_POINT}/k3s-backup/k3s.yaml.$$(date +%Y%m%d_%H%M%S)\"\n  log \"✅ Kubeconfig 已备份到 NAS（来源: ${KUBECONFIG_PATH}）\"\nelif [ -f ~/.kube/config ]; then\n  cp ~/.kube/config \"${NAS_MOUNT_POINT}/k3s-backup/k3s.yaml.$$(date +%Y%m%d_%H%M%S)\"\n  log \"✅ Kubeconfig 已备份到 NAS（来源: ~/.kube/config）\"\nelse\n  log \"⚠️ 警告: 无法备份 kubeconfig 到 NAS，文件不存在\"\nfi\n\n# ==============================================================================\n# 第五优先级：OSS 挂载（K3s 数据持久化 - 延迟到 K3s 启动后）\n# ==============================================================================\nlog \"[优先级 5] 配置 OSS 挂载（K3s PVC 数据持久化）...\"\n\ngoto_oss_mount_end=false\n\n# 安装 ossfs（阿里云 OSS 文件系统）\nif ! command -v ossfs \u003e/dev/null 2\u003e\u00261; then\n  log \"安装 ossfs...\"\n  \n  # 先安装 libfuse2（ossfs 需要 libfuse.so.2，但 Ubuntu 22.04 默认只有 libfuse3）\n  log \"安装 libfuse2（ossfs 依赖）...\"\n  export DEBIAN_FRONTEND=noninteractive\n  apt-get update -qq \u003e/dev/null 2\u003e\u00261 || true\n  apt-get install -y -qq libfuse2 \u003e/dev/null 2\u003e\u00261 || {\n    log \"⚠️  libfuse2 安装失败，尝试继续安装 ossfs...\"\n  }\n  \n  OSSFS_VERSION=\"1.91.1\"\n  OSS_INTERNAL_URL=\"\"\n  if [ -n \"${OSS_REGION}\" ]; then\n    OSS_INTERNAL_URL=\"https://oss-${OSS_REGION}-internal.aliyuncs.com/ossfs/ossfs_${OSSFS_VERSION}_ubuntu22.04_amd64.deb\"\n  fi\n  \n  OSSFS_DOWNLOADED=false\n  if [ -n \"${OSS_INTERNAL_URL}\" ]; then\n    log \"尝试从内网 OSS 地址下载 ossfs: ${OSS_INTERNAL_URL}\"\n    wget -q --timeout=10 \"${OSS_INTERNAL_URL}\" -O /tmp/ossfs.deb \u0026\u0026 OSSFS_DOWNLOADED=true || {\n      log \"⚠️  内网 OSS 地址下载失败，尝试公网地址...\"\n    }\n  fi\n  \n  if [ \"${OSSFS_DOWNLOADED}\" != \"true\" ]; then\n    wget -q --timeout=30 \"https://gosspublic.alicdn.com/ossfs/ossfs_${OSSFS_VERSION}_ubuntu22.04_amd64.deb\" -O /tmp/ossfs.deb \u0026\u0026 OSSFS_DOWNLOADED=true || {\n      log \"⚠️  阿里云公网地址下载失败，尝试从 GitHub 下载...\"\n      wget -q --timeout=30 \"https://github.com/aliyun/ossfs/releases/download/v${OSSFS_VERSION}/ossfs_${OSSFS_VERSION}_ubuntu22.04_amd64.deb\" -O /tmp/ossfs.deb \u0026\u0026 OSSFS_DOWNLOADED=true || {\n        log \"⚠️  警告: ossfs 安装失败，PVC 数据将使用本地存储（不影响 K3s 运行）\"\n        log \"   可以稍后手动安装 ossfs 并挂载 OSS\"\n        rm -f /tmp/ossfs.deb\n        goto_oss_mount_end=true\n      }\n    }\n  fi\n  if [ \"${goto_oss_mount_end}\" != \"true\" ]; then\n    dpkg -i /tmp/ossfs.deb || {\n      log \"⚠️  dpkg 安装失败，尝试修复依赖...\"\n      apt-get update -qq \u0026\u0026 apt-get install -y -f \u0026\u0026 dpkg -i /tmp/ossfs.deb || {\n        log \"⚠️  警告: ossfs 安装失败，PVC 数据将使用本地存储（不影响 K3s 运行）\"\n        rm -f /tmp/ossfs.deb\n        goto_oss_mount_end=true\n      }\n    }\n    rm -f /tmp/ossfs.deb\n    log \"✅ ossfs 安装完成\"\n  fi\nelse\n  log \"✅ ossfs 已安装\"\nfi\n\nif [ \"${goto_oss_mount_end}\" != \"true\" ]; then\n  OSS_ACCESS_KEY_ID=\"${ALICLOUD_ACCESS_KEY:-}\"\n  OSS_ACCESS_KEY_SECRET=\"${ALICLOUD_SECRET_KEY:-}\"\n  \n  if [ -z \"${OSS_ACCESS_KEY_ID}\" ] || [ -z \"${OSS_ACCESS_KEY_SECRET}\" ]; then\n    log \"⚠️  警告: OSS 访问凭证未设置，尝试使用实例 RAM Role\"\n    OSS_ACCESS_KEY_ID=\"\"\n    OSS_ACCESS_KEY_SECRET=\"\"\n  fi\n  \n  mkdir -p \"${K3S_STORAGE_PATH}\"\n  \n  if [ -n \"${OSS_ACCESS_KEY_ID}\" ] \u0026\u0026 [ -n \"${OSS_ACCESS_KEY_SECRET}\" ]; then\n    echo \"${OSS_BUCKET_NAME}:${OSS_ACCESS_KEY_ID}:${OSS_ACCESS_KEY_SECRET}\" \u003e /etc/passwd-ossfs\n    chmod 640 /etc/passwd-ossfs\n    log \"✅ OSS 访问凭证已配置\"\n  fi\n  \n  log \"挂载 OSS Bucket: ${OSS_BUCKET_NAME} -\u003e ${K3S_STORAGE_PATH}\"\n  MOUNT_OPTIONS=\"url=oss-${OSS_REGION}.aliyuncs.com,allow_other,use_cache=/tmp/ossfs-cache\"\n  \n  if [ -f \"/etc/passwd-ossfs\" ]; then\n    if ossfs \"${OSS_BUCKET_NAME}\" \"${K3S_STORAGE_PATH}\" -o \"${MOUNT_OPTIONS}\" 2\u003e\u00261; then\n      log \"✅ OSS 挂载成功（AccessKey）\"\n    else\n      log \"⚠️  警告: OSS 挂载失败（AccessKey），PVC 数据将使用本地存储\"\n      log \"   可以稍后手动挂载 OSS\"\n    fi\n  else\n    if ossfs \"${OSS_BUCKET_NAME}\" \"${K3S_STORAGE_PATH}\" -o \"${MOUNT_OPTIONS},iam_role\" 2\u003e\u00261; then\n      log \"✅ OSS 挂载成功（RAM Role）\"\n    else\n      log \"⚠️  警告: OSS 挂载失败（RAM Role），PVC 数据将使用本地存储\"\n      log \"   请检查 ECS 实例是否配置了 RAM Role 和相应的 RAM Policy\"\n    fi\n  fi\n  \n  if mountpoint -q \"${K3S_STORAGE_PATH}\" 2\u003e/dev/null; then\n    if ! grep -q \"${OSS_BUCKET_NAME}\" /etc/fstab 2\u003e/dev/null; then\n      if [ -f \"/etc/passwd-ossfs\" ]; then\n        echo \"ossfs#${OSS_BUCKET_NAME} ${K3S_STORAGE_PATH} fuse _netdev,url=oss-${OSS_REGION}.aliyuncs.com,allow_other,use_cache=/tmp/ossfs-cache 0 0\" \u003e\u003e /etc/fstab\n      else\n        echo \"ossfs#${OSS_BUCKET_NAME} ${K3S_STORAGE_PATH} fuse _netdev,url=oss-${OSS_REGION}.aliyuncs.com,allow_other,use_cache=/tmp/ossfs-cache,iam_role 0 0\" \u003e\u003e /etc/fstab\n      fi\n      log \"✅ OSS 挂载点已添加到 /etc/fstab\"\n    fi\n    \n    if mountpoint -q \"${K3S_STORAGE_PATH}\" 2\u003e/dev/null; then\n      log \"✅ OSS 挂载验证成功: ${K3S_STORAGE_PATH}\"\n      if touch \"${K3S_STORAGE_PATH}/.write-test\" 2\u003e/dev/null; then\n        rm -f \"${K3S_STORAGE_PATH}/.write-test\"\n        log \"✅ OSS 写入测试通过\"\n      else\n        log \"⚠️  警告: OSS 写入测试失败，但继续执行\"\n      fi\n    fi\n  else\n    log \"⚠️  警告: OSS 挂载验证失败，PVC 数据将使用本地存储\"\n    log \"   不影响 K3s 运行，可以稍后手动挂载 OSS\"\n  fi\nfi\n\n# ==============================================================================\n# 健康检查：验证 K3s 集群状态并写入成功标记\n# ==============================================================================\nlog \"[健康检查] 验证 K3s 集群状态...\"\n\nK3S_READY=false\nfor i in {1..30}; do\n  if kubectl get nodes \u003e/dev/null 2\u003e\u00261; then\n    K3S_READY=true\n    log \"✅ K3s 集群已就绪（等待了 ${i} 次检查）\"\n    break\n  fi\n  sleep 2\ndone\n\nif [ \"${K3S_READY}\" = \"true\" ]; then\n  NODE_COUNT=$(kubectl get nodes --no-headers 2\u003e/dev/null | wc -l)\n  log \"✅ K3s 集群健康检查通过，节点数量: ${NODE_COUNT}\"\n  \n  mkdir -p /var/lib/titan\n  echo \"$$(date +'%Y-%m-%d %H:%M:%S')\" \u003e /var/lib/titan/SUCCESS\n  echo \"NODE_COUNT=${NODE_COUNT}\" \u003e\u003e /var/lib/titan/SUCCESS\n  log \"✅ 成功标记文件已创建: /var/lib/titan/SUCCESS\"\nelse\n  log \"⚠️  警告: K3s 集群健康检查失败，但初始化流程已完成\"\n  log \"   可以稍后手动检查: kubectl get nodes\"\nfi\n\nlog \"=== Titan Infra Hub 极速串行初始化完成 ===\"\n",
+            "content_disposition": "",
+            "content_encoding": "",
+            "content_length": "24724",
+            "content_md5": null,
+            "content_type": "text/x-shellscript",
+            "etag": "17407F6F54F02197B00998490D8F849E",
+            "expires": "",
+            "id": "scripts/titan-init.sh",
+            "key": "scripts/titan-init.sh",
+            "kms_key_id": null,
+            "server_side_encryption": "AES256",
+            "source": null,
+            "version_id": "CAEQ7gEYgYDA94zh5.MZIiBjYjUyZGU3MmE2Nzc0YzIxOTc3OWUxM2I3YWIyMzVjNQ--"
+          },
+          "sensitive_attributes": [],
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.nas.alicloud_nas_access_group.main",
+            "module.nas.alicloud_nas_file_system.main",
+            "module.nas.alicloud_nas_mount_target.main",
+            "module.nas.data.alicloud_nas_access_groups.existing",
+            "module.oss.alicloud_oss_bucket.main",
+            "module.oss.alicloud_oss_bucket_acl.main",
+            "module.oss.random_id.bucket_suffix",
+            "module.vpc.alicloud_vpc.main",
+            "module.vpc.alicloud_vswitch.main",
+            "module.vpc.data.alicloud_zones.available"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.oss",
+      "mode": "managed",
+      "type": "random_id",
+      "name": "bucket_suffix",
+      "provider": "provider[\"registry.terraform.io/hashicorp/random\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "b64_std": "0KDe5w==",
+            "b64_url": "0KDe5w",
+            "byte_length": 4,
+            "dec": "3500203751",
+            "hex": "d0a0dee7",
+            "id": "0KDe5w",
+            "keepers": {
+              "env_id": "dev",
+              "project_name": "deploy-engine-demo"
+            },
+            "prefix": null
+          },
+          "sensitive_attributes": [],
+          "create_before_destroy": true
+        }
+      ]
+    },
+    {
+      "module": "module.security",
+      "mode": "data",
+      "type": "http",
+      "name": "current_ip",
+      "provider": "provider[\"registry.terraform.io/hashicorp/http\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "body": "47.236.150.189",
+            "ca_cert_pem": null,
+            "client_cert_pem": null,
+            "client_key_pem": null,
+            "id": "https://api.ipify.org",
+            "insecure": null,
+            "method": null,
+            "request_body": null,
+            "request_headers": {
+              "Accept": "text/plain"
+            },
+            "request_timeout_ms": null,
+            "response_body": "47.236.150.189",
+            "response_body_base64": "NDcuMjM2LjE1MC4xODk=",
+            "response_headers": {
+              "Cf-Cache-Status": "DYNAMIC",
+              "Cf-Ray": "9d0c453b197fff8b-SIN",
+              "Content-Type": "text/plain",
+              "Date": "Fri, 20 Feb 2026 07:25:30 GMT",
+              "Server": "cloudflare",
+              "Vary": "Origin"
+            },
+            "retry": null,
+            "status_code": 200,
+            "url": "https://api.ipify.org"
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    },
+    {
+      "module": "module.security",
+      "mode": "managed",
+      "type": "alicloud_security_group",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "create_time": "2026-02-20T07:16:17Z",
+            "description": "Security group for deploy-engine-demo dev environment",
+            "id": "sg-j6c3x0ww4bmzb9vlcmhl",
+            "inner_access": true,
+            "inner_access_policy": "Accept",
+            "name": "deploy-engine-demo-sg-dev",
+            "resource_group_id": "",
+            "security_group_name": "deploy-engine-demo-sg-dev",
+            "security_group_type": "normal",
+            "tags": null,
+            "timeouts": null,
+            "vpc_id": "vpc-j6c10rbng87bfayxlr0pg"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6NjAwMDAwMDAwMDAwLCJ1cGRhdGUiOjMwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.vpc.alicloud_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.security",
+      "mode": "managed",
+      "type": "alicloud_security_group_rule",
+      "name": "egress_all",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "cidr_ip": "0.0.0.0/0",
+            "description": "Allow all outbound traffic",
+            "id": "sg-j6c3x0ww4bmzb9vlcmhl:egress:all:-1/-1:intranet:0.0.0.0/0:accept:1",
+            "ip_protocol": "all",
+            "ipv6_cidr_ip": "",
+            "nic_type": "intranet",
+            "policy": "accept",
+            "port_range": "-1/-1",
+            "prefix_list_id": "",
+            "priority": 1,
+            "security_group_id": "sg-j6c3x0ww4bmzb9vlcmhl",
+            "security_group_rule_id": "sgr-j6ccqxwabnka2pk41b0x",
+            "source_group_owner_account": "",
+            "source_security_group_id": "",
+            "type": "egress"
+          },
+          "sensitive_attributes": [],
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.security.alicloud_security_group.main",
+            "module.vpc.alicloud_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.security",
+      "mode": "managed",
+      "type": "alicloud_security_group_rule",
+      "name": "k8s_api",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "cidr_ip": "47.236.150.189/32",
+            "description": "K8s API (via EIP); source from ssh_allowed_cidr or apply-time IP",
+            "id": "sg-j6c3x0ww4bmzb9vlcmhl:ingress:tcp:6443/6443:intranet:47.236.150.189/32:accept:1",
+            "ip_protocol": "tcp",
+            "ipv6_cidr_ip": "",
+            "nic_type": "intranet",
+            "policy": "accept",
+            "port_range": "6443/6443",
+            "prefix_list_id": "",
+            "priority": 1,
+            "security_group_id": "sg-j6c3x0ww4bmzb9vlcmhl",
+            "security_group_rule_id": "sgr-j6c7sq5k4iy5jily5wcj",
+            "source_group_owner_account": "",
+            "source_security_group_id": "",
+            "type": "ingress"
+          },
+          "sensitive_attributes": [],
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.security.alicloud_security_group.main",
+            "module.security.data.http.current_ip",
+            "module.vpc.alicloud_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.security",
+      "mode": "managed",
+      "type": "alicloud_security_group_rule",
+      "name": "ssh",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "cidr_ip": "47.236.150.189/32",
+            "description": "SSH access (via EIP); source from ssh_allowed_cidr or apply-time IP",
+            "id": "sg-j6c3x0ww4bmzb9vlcmhl:ingress:tcp:22/22:intranet:47.236.150.189/32:accept:1",
+            "ip_protocol": "tcp",
+            "ipv6_cidr_ip": "",
+            "nic_type": "intranet",
+            "policy": "accept",
+            "port_range": "22/22",
+            "prefix_list_id": "",
+            "priority": 1,
+            "security_group_id": "sg-j6c3x0ww4bmzb9vlcmhl",
+            "security_group_rule_id": "sgr-j6c9minybp3kxuybm69v",
+            "source_group_owner_account": "",
+            "source_security_group_id": "",
+            "type": "ingress"
+          },
+          "sensitive_attributes": [],
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.security.alicloud_security_group.main",
+            "module.security.data.http.current_ip",
+            "module.vpc.alicloud_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.security",
+      "mode": "managed",
+      "type": "alicloud_security_group_rule",
+      "name": "vpc_internal",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "cidr_ip": "10.0.0.0/16",
+            "description": "Allow all traffic from VPC internal",
+            "id": "sg-j6c3x0ww4bmzb9vlcmhl:ingress:all:-1/-1:intranet:10.0.0.0/16:accept:10",
+            "ip_protocol": "all",
+            "ipv6_cidr_ip": "",
+            "nic_type": "intranet",
+            "policy": "accept",
+            "port_range": "-1/-1",
+            "prefix_list_id": "",
+            "priority": 10,
+            "security_group_id": "sg-j6c3x0ww4bmzb9vlcmhl",
+            "security_group_rule_id": "sgr-j6c83ksz6fmi93zzzvrz",
+            "source_group_owner_account": "",
+            "source_security_group_id": "",
+            "type": "ingress"
+          },
+          "sensitive_attributes": [],
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.security.alicloud_security_group.main",
+            "module.vpc.alicloud_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.vpc",
+      "mode": "data",
+      "type": "alicloud_zones",
+      "name": "available",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "available_disk_category": null,
+            "available_instance_type": "ecs.u1-c1m4.xlarge",
+            "available_resource_creation": "Instance",
+            "available_slb_address_ip_version": null,
+            "available_slb_address_type": null,
+            "enable_details": false,
+            "id": "1855267249",
+            "ids": [
+              "cn-hongkong-b",
+              "cn-hongkong-c",
+              "cn-hongkong-d"
+            ],
+            "instance_charge_type": "PostPaid",
+            "multi": false,
+            "network_type": null,
+            "output_file": null,
+            "spot_strategy": "NoSpot",
+            "zones": [
+              {
+                "available_disk_categories": [],
+                "available_instance_types": [],
+                "available_resource_creation": [],
+                "id": "cn-hongkong-b",
+                "local_name": "",
+                "multi_zone_ids": [],
+                "slb_slave_zone_ids": []
+              },
+              {
+                "available_disk_categories": [],
+                "available_instance_types": [],
+                "available_resource_creation": [],
+                "id": "cn-hongkong-c",
+                "local_name": "",
+                "multi_zone_ids": [],
+                "slb_slave_zone_ids": []
+              },
+              {
+                "available_disk_categories": [],
+                "available_instance_types": [],
+                "available_resource_creation": [],
+                "id": "cn-hongkong-d",
+                "local_name": "",
+                "multi_zone_ids": [],
+                "slb_slave_zone_ids": []
+              }
+            ]
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    },
+    {
+      "module": "module.vpc",
+      "mode": "managed",
+      "type": "alicloud_vpc",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "cidr_block": "10.0.0.0/16",
+            "classic_link_enabled": false,
+            "create_time": "2026-02-20T07:16:11Z",
+            "description": "",
+            "dns_hostname_status": "DISABLED",
+            "dry_run": null,
+            "enable_ipv6": false,
+            "force_delete": null,
+            "id": "vpc-j6c10rbng87bfayxlr0pg",
+            "ipv4_cidr_mask": null,
+            "ipv4_ipam_pool_id": null,
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_blocks": [],
+            "ipv6_isp": null,
+            "is_default": null,
+            "name": "deploy-engine-demo-vpc-dev",
+            "region_id": "cn-hongkong",
+            "resource_group_id": "rg-acfm2bxtcxyibwi",
+            "route_table_id": "vtb-j6cnryj4zosi9sdzme8nq",
+            "router_id": "vrt-j6c7olyptmelpghwnqxxx",
+            "router_table_id": "vtb-j6cnryj4zosi9sdzme8nq",
+            "secondary_cidr_blocks": [],
+            "secondary_cidr_mask": null,
+            "status": "Available",
+            "system_route_table_description": "",
+            "system_route_table_name": "",
+            "system_route_table_route_propagation_enable": true,
+            "tags": null,
+            "timeouts": null,
+            "user_cidrs": [],
+            "vpc_name": "deploy-engine-demo-vpc-dev"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjMwMDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "module": "module.vpc",
+      "mode": "managed",
+      "type": "alicloud_vswitch",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/alicloud\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "availability_zone": "cn-hongkong-b",
+            "cidr_block": "10.0.1.0/24",
+            "create_time": "2026-02-20T07:16:17Z",
+            "description": "",
+            "enable_ipv6": null,
+            "id": "vsw-j6cii8gyj8ikew12621zn",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_mask": null,
+            "is_default": null,
+            "name": "deploy-engine-demo-vswitch-dev",
+            "status": "Available",
+            "tags": null,
+            "timeouts": null,
+            "vpc_id": "vpc-j6c10rbng87bfayxlr0pg",
+            "vswitch_name": "deploy-engine-demo-vswitch-dev",
+            "zone_id": "cn-hongkong-b"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6NjAwMDAwMDAwMDAwLCJ1cGRhdGUiOjMwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.vpc.alicloud_vpc.main",
+            "module.vpc.data.alicloud_zones.available"
+          ]
+        }
+      ]
+    }
+  ],
+  "check_results": [
+    {
+      "object_kind": "var",
+      "config_addr": "var.instance_password",
+      "status": "pass",
+      "objects": [
+        {
+          "object_addr": "var.instance_password",
+          "status": "pass"
+        }
+      ]
+    }
+  ]
+}

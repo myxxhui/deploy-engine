@@ -5,6 +5,8 @@
 # 脚本位于 deploy/scripts/；PROJECT_ROOT = 仓库根目录
 
 set -euo pipefail
+set +H
+# 禁用历史展开，避免密码中的 !! 等被展开；且优先使用环境变量避免 tfvars 解析问题
 
 ENV="${1:-dev}"
 PROJECT="${2:-}"
@@ -80,14 +82,10 @@ fi
 
 # 注意：脚本内 SSH 使用 -o UserKnownHostsFile=/dev/null，不读写 known_hosts；上述清理便于本机后续手动 ssh 时也不冲突
 
-# 2. 获取密码（从 TFVARS_FILE：扁平 terraform-<project>-<env>.tfvars 或旧路径，或环境变量）
-PASSWORD=""
-if [ -f "$TFVARS_FILE" ]; then
-    PASSWORD=$(grep '^instance_password' "$TFVARS_FILE" 2>/dev/null | sed 's/.*= *"\(.*\)".*/\1/' || echo "")
-fi
-
-if [ -z "$PASSWORD" ]; then
-    PASSWORD="${INSTANCE_PASSWORD:-}"
+# 2. 获取密码（优先环境变量，避免 tfvars 中含 ! 等字符时解析错误；与「本机可 SSH 脚本却失败」时用 export INSTANCE_PASSWORD 重试）
+PASSWORD="${INSTANCE_PASSWORD:-}"
+if [ -z "$PASSWORD" ] && [ -f "$TFVARS_FILE" ]; then
+    PASSWORD=$(grep '^[[:space:]]*instance_password' "$TFVARS_FILE" 2>/dev/null | sed -n 's/.*= *"\([^"]*\)".*/\1/p' | head -n1)
 fi
 
 if [ -z "$PASSWORD" ]; then
@@ -96,37 +94,62 @@ if [ -z "$PASSWORD" ]; then
     exit 1
 fi
 
+if ! command -v sshpass >/dev/null 2>&1; then
+    error "未找到 sshpass，脚本需其自动传密。请安装（如 yum install sshpass 或 apt install sshpass）或在本机执行: export INSTANCE_PASSWORD='你的密码' 后单独运行 ./deploy/scripts/get-kubeconfig.sh $ENV ${PROJECT:-}"
+    exit 1
+fi
+
+# 调试：密码长度与来源（不输出明文），便于排查「本机可 SSH 脚本失败」
+if [ -n "${INSTANCE_PASSWORD:-}" ]; then
+    PASSWORD_SOURCE="INSTANCE_PASSWORD"
+else
+    PASSWORD_SOURCE="tfvars"
+fi
+log "密码长度: ${#PASSWORD}，来源: $PASSWORD_SOURCE"
+
 # 3. 等待 K3s 就绪并下载 kubeconfig（轮询检测，就绪后立即继续；可通过 KUBECONFIG_MAX_RETRIES、KUBECONFIG_SLEEP_SEC 调整）
 log "等待 K3s API Server 就绪..."
 MAX_RETRIES="${KUBECONFIG_MAX_RETRIES:-60}"
 KUBECONFIG_SLEEP="${KUBECONFIG_SLEEP_SEC:-3}"
 RETRY_COUNT=0
 
+# 使用 SSHPASS 环境变量传密（sshpass -e），避免 -p 与含 ! 等字符时的解析问题
+run_ssh() {
+    SSHPASS="$PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "$@"
+}
+
 # 每若干次重试输出一次诊断，便于排查「一直等不到就绪」的原因
+# 注意：以 SSH 退出码判断成败，不能以 stderr 非空判断（SSH 会把 "Permanently added ... to known_hosts" 打到 stderr，连接仍成功）
 diagnose_k3s() {
-    local diag
-    if ! sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "exit 0" 2>/dev/null; then
-        diag="SSH 连接失败。请检查: (1) 安全组放行 22 且来源含本机 IP（若部署与当前非同一出口 IP，请在 tfvars 中设置 ssh_allowed_cidr = \"0.0.0.0/0\" 后重新 make deploy，或本机重新 make deploy 以更新放行 IP）(2) instance_password 正确 (3) 本机执行: ssh -o ConnectTimeout=5 root@$IP"
+    local err
+    err=$(SSHPASS="$PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "exit 0" 2>&1)
+    local ret=$?
+    if [ $ret -ne 0 ]; then
+        local diag
+        if echo "$err" | grep -q "Permission denied"; then
+            diag="SSH 认证失败（Permission denied），多为密码错误。请执行: export INSTANCE_PASSWORD='你的密码' 后重试"
+        elif echo "$err" | grep -qi "timed out\|Connection refused"; then
+            diag="SSH 连接超时或拒绝。若本机可通而脚本不通，可能是运行环境无法访问 ECS，请在本机执行: ./deploy/scripts/get-kubeconfig.sh $ENV ${PROJECT:-}"
+        else
+            diag="SSH 连接失败（exit $ret）。原始错误: $(echo "$err" | grep -v "Permanently added" | head -1)"
+        fi
+        warning "诊断: $diag"
     else
         local has_yaml
-        has_yaml=$(sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "test -f /etc/rancher/k3s/k3s.yaml && echo 1 || echo 0" 2>/dev/null)
+        has_yaml=$(run_ssh "test -f /etc/rancher/k3s/k3s.yaml && echo 1 || echo 0" 2>/dev/null)
         if [ "$has_yaml" != "1" ]; then
-            diag="ECS 上未发现 K3s（/etc/rancher/k3s/k3s.yaml 不存在）。可能原因: (1) OSS 上的初始化脚本未下载成功（需 ECS 绑定 RAM Role 且角色具备 OSS 读权限）(2) 实例为旧资源或 cloud-init 未跑完。建议: make down 再 make deploy 重建，或 SSH 上机查看 /var/log/titan-init.log"
+            warning "诊断: ECS 上未发现 K3s（/etc/rancher/k3s/k3s.yaml 不存在）。请 SSH 上机执行: cat /var/log/titan-init.log。若日志有「HTTP 下载失败」且「无法获取 RAM Role」，说明 OSS 初始化脚本为私有且 ECS 未绑定 RAM Role，请在 tfvars 中设置 ram_role_name 并授予 OSS 读权限后重建 ECS，或将 init_script_acl 设为 public-read 后 terraform apply 再重建 ECS。"
         else
-            if ! sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" 'kubectl cluster-info --request-timeout=5' >/dev/null 2>&1; then
-                diag="K3s 已安装但 API 未就绪（可能仍在启动），请稍候"
-            else
-                diag="检查通过但主流程未命中，将重试"
+            if ! run_ssh 'kubectl cluster-info --request-timeout=5' >/dev/null 2>&1; then
+                warning "诊断: K3s 已安装但 API 未就绪（可能仍在启动），请稍候"
             fi
         fi
     fi
-    warning "诊断: $diag"
 }
 
 while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
     # 尝试通过 SSH 获取 kubeconfig
-    if sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" \
-        'test -f /etc/rancher/k3s/k3s.yaml && kubectl cluster-info --request-timeout=5 >/dev/null 2>&1' 2>/dev/null; then
+    if run_ssh 'test -f /etc/rancher/k3s/k3s.yaml && kubectl cluster-info --request-timeout=5 >/dev/null 2>&1' 2>/dev/null; then
         log "K3s 已就绪"
         break
     fi
@@ -148,8 +171,7 @@ fi
 
 # 4. 下载 kubeconfig
 log "下载 Kubeconfig..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$IP" \
-    "cat /etc/rancher/k3s/k3s.yaml" > "$CONFIG_OUT" || {
+run_ssh "cat /etc/rancher/k3s/k3s.yaml" > "$CONFIG_OUT" || {
     error "下载 Kubeconfig 失败"
     exit 1
 }

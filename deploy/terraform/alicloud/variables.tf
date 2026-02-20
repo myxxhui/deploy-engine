@@ -115,6 +115,12 @@ variable "oss_existing_bucket_name" {
   default     = ""
 }
 
+variable "oss_bucket_acl" {
+  description = "新建 OSS Bucket 的 ACL：public-read 公网只读；private 仅账号可访问。部分账号禁止 public-read-write"
+  type        = string
+  default     = "public-read"
+}
+
 variable "vpc_use_existing" {
   description = "是否使用已存在的 VPC"
   type        = bool
@@ -191,6 +197,12 @@ variable "ram_role_name" {
   description = "ECS RAM Role 名称（可选，需在控制台预先创建；不自动创建 Role/Policy）"
   type        = string
   default     = ""
+}
+
+variable "init_script_acl" {
+  description = "OSS 初始化脚本对象 ACL：public-read 时 ECS 可直接 HTTP 下载；private 时需 ram_role_name。若 apply 报 PutObject acl 不允许则设为 private。"
+  type        = string
+  default     = "public-read"
 }
 
 variable "force_destroy_bucket" {

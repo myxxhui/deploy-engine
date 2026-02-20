@@ -2,43 +2,20 @@
 # OSS 模块：对象存储资源（用于 K3s 数据持久化）
 # ==============================================================================
 
-# 生成随机后缀（用于避免固定名称被占用时的冲突）
-# 随机后缀基于 keepers，相同配置会生成相同的后缀，便于复用
-resource "random_id" "bucket_suffix" {
-  keepers = {
-    env_id       = var.env_id
-    project_name = var.project_name
-  }
-  byte_length = 4
-}
-
-# Bucket 名称：默认使用带随机后缀的名称（避免全局名称冲突）
-# 如果希望使用固定名称，可以设置 oss_use_existing_bucket = true 并指定固定名称
+# 固定 Bucket 名称：region 不变时始终复用同一存储桶，不重复创建
 locals {
-  fixed_bucket_name       = "${var.project_name}-k3s-storage-${var.env_id}"
-  bucket_name_with_suffix = "${var.project_name}-k3s-storage-${var.env_id}-${random_id.bucket_suffix.hex}"
+  fixed_bucket_name = "deploy-engine-k3s-storage"
 
-  # 使用的 Bucket 名称：
-  # - 如果 use_existing_bucket=true，使用 existing_bucket_name 或 fixed_bucket_name
-  # - 如果 use_existing_bucket=false，使用带随机后缀的名称（避免冲突）
+  # 创建时使用固定名称；使用已存在时用 existing_bucket_name 或固定名
   bucket_name_to_create = var.use_existing_bucket ? (
     var.existing_bucket_name != "" ? var.existing_bucket_name : local.fixed_bucket_name
-    ) : (
-    local.bucket_name_with_suffix
-  )
+  ) : local.fixed_bucket_name
 
-  # 判断是否需要创建新 Bucket
-  # - 如果 use_existing_bucket=true，不创建（使用已存在的 Bucket）
-  # - 如果 use_existing_bucket=false，创建新 Bucket（使用带随机后缀的名称，避免冲突）
-  # 注意：由于 random_id.bucket_suffix.hex 在 plan 阶段是 known after apply，
-  # 我们不能在 plan 阶段检查 Bucket 是否存在，所以简化逻辑：
-  # 如果 use_existing_bucket=false，总是尝试创建（使用随机后缀，冲突概率很低）
   should_create_bucket = !var.use_existing_bucket
 }
 
-# 创建新的 OSS Bucket（仅当 Bucket 不存在时）
-# 默认使用带随机后缀的名称，避免全局名称冲突
-# 如果希望使用固定名称，设置 oss_use_existing_bucket = true 并指定固定名称
+# 创建 OSS Bucket：固定名称 deploy-engine-k3s-storage，region 不变时复用同一桶；bucket_acl 默认 public-read 公网只读
+# 未设置 oss_use_existing_bucket=true 时一定会创建桶并上传 scripts/titan-init.sh；若 state 丢失且桶已存在，可设 oss_use_existing_bucket=true、oss_existing_bucket_name="deploy-engine-k3s-storage" 复用
 resource "alicloud_oss_bucket" "main" {
   count = local.should_create_bucket ? 1 : 0
 
@@ -68,12 +45,11 @@ resource "alicloud_oss_bucket" "main" {
   }
 }
 
-# OSS Bucket ACL（使用新资源替代废弃的 acl 字段）
-# 仅当创建新 Bucket 时设置 ACL
+# OSS Bucket ACL（仅当创建新 Bucket 时设置）。默认 public-read 公网只读；若 403 可在 tfvars 设 oss_bucket_acl = "private"
 resource "alicloud_oss_bucket_acl" "main" {
   count  = local.should_create_bucket ? 1 : 0
   bucket = alicloud_oss_bucket.main[0].bucket
-  acl    = "private"
+  acl    = var.bucket_acl
 
   # 确保先创建再销毁，避免对象资源创建时 Bucket 不存在
   lifecycle {
@@ -95,10 +71,7 @@ locals {
 # 无论 Bucket 是否存在，都上传/更新脚本（确保脚本始终是最新的）
 resource "alicloud_oss_bucket_object" "init_script" {
   # 只有当 Bucket 存在或已创建时才创建对象
-  # 如果 use_existing_bucket=true，总是创建对象（假设 Bucket 已存在）
-  # 如果 use_existing_bucket=false，只有当 Bucket 创建成功时才创建对象
-  # 注意：由于 random_id.bucket_suffix.hex 在 plan 阶段是 known after apply，
-  # 我们不能在 plan 阶段检查 Bucket 是否存在，所以简化逻辑
+  # use_existing_bucket 时上传到已存在桶；否则在创建桶（固定名 deploy-engine-k3s-storage）成功后上传
   count = var.use_existing_bucket ? 1 : (
     length(alicloud_oss_bucket.main) > 0 ? 1 : 0
   )
@@ -118,9 +91,8 @@ resource "alicloud_oss_bucket_object" "init_script" {
 
   content_type = "text/x-shellscript"
 
-  # 对象私有读，避免账号策略 "Put public object acl is not allowed"；ECS 通过 RAM Role 用 ossutil 下载
-  # 请在 tfvars 中设置 ram_role_name，并在控制台为该 Role 授予目标 Bucket 的 oss:GetObject 权限
-  acl = "private"
+  # init_script_acl=public-read 时 ECS 可直接 HTTP 下载；private 时需 ECS 绑定 ram_role_name
+  acl = var.init_script_acl
 
   # 注意：Terraform 会自动根据 content 计算 etag
   # 当脚本内容变化时，Terraform 会自动检测并更新对象

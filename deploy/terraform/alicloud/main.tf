@@ -91,10 +91,12 @@ module "oss" {
   common_tags          = local.common_tags
   use_existing_bucket  = var.oss_use_existing_bucket
   existing_bucket_name = var.oss_existing_bucket_name
+  bucket_acl           = var.oss_bucket_acl
   nas_mount_domain     = module.nas.nas_mount_domain
   acr_server           = var.acr_server != "" ? var.acr_server : local.acr_server
   acr_namespace        = var.acr_namespace != "" ? var.acr_namespace : local.acr_namespace
   init_script_content  = local.init_script_content
+  init_script_acl      = var.init_script_acl
 }
 
 module "ecs" {

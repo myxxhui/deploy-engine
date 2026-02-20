@@ -3,9 +3,11 @@ package aliyun
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,13 +21,13 @@ import (
 )
 
 // #region agent log
-const debugLogPath = "/Users/huishaoqi/Desktop/workspace/.cursor/debug.log"
+const debugLogPath = "/root/sean/workspace/.diting/.cursor/debug-71deed.log"
 
 func agentLog(location, message, hypothesisId string, data map[string]interface{}) {
 	if data == nil {
 		data = make(map[string]interface{})
 	}
-	payload := map[string]interface{}{"location": location, "message": message, "hypothesisId": hypothesisId, "data": data, "timestamp": time.Now().UnixMilli()}
+	payload := map[string]interface{}{"sessionId": "71deed", "location": location, "message": message, "hypothesisId": hypothesisId, "data": data, "timestamp": time.Now().UnixMilli()}
 	if b, err := json.Marshal(payload); err == nil {
 		if f, err := os.OpenFile(debugLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 			f.Write(append(b, '\n'))
@@ -181,6 +183,23 @@ func diskCategoryFromTfvars(tfvarsPath string) string {
 	return ""
 }
 
+// sshAllowedCidrFromTfvars 从 tfvars 解析 ssh_allowed_cidr，供 apply 时显式传入以确保安全组规则同步生效。
+func sshAllowedCidrFromTfvars(tfvarsPath string) string {
+	f, err := os.Open(tfvarsPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	re := regexp.MustCompile(`^\s*ssh_allowed_cidr\s*=\s*"([^"]+)"\s*$`)
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if m := re.FindStringSubmatch(sc.Text()); len(m) == 2 {
+			return m[1]
+		}
+	}
+	return ""
+}
+
 // instancePasswordFromEnvOrFile 优先从环境变量 TF_VAR_instance_password 读取，否则从 tfvars 文件中解析。
 func (d *Driver) instancePasswordFromEnvOrFile(tfvarsPath string) (string, error) {
 	if p := os.Getenv("TF_VAR_instance_password"); p != "" {
@@ -286,10 +305,19 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 			if regionVal == "" {
 				regionVal = mergedVars.Region
 			}
-			sgArgs := []string{"apply", "-refresh=false", "-auto-approve",
+			// 强制 replace 两条规则，确保云上规则与 tfvars 的 ssh_allowed_cidr 一致（cidr_ip 为 ForceNew，仅 replace 会真正更新云上规则）
+			cidrVal := sshAllowedCidrFromTfvars(tfvars)
+			if cidrVal == "" {
+				cidrVal = "0.0.0.0/0"
+			}
+			sgArgs := []string{"apply", "-auto-approve",
 				"-target=module.security.alicloud_security_group_rule.ssh[0]",
 				"-target=module.security.alicloud_security_group_rule.k8s_api[0]",
-				"-var-file=" + tmpPath, "-var-file=" + tfVarsAbs, "-var=env_id=" + d.EnvID}
+				"-replace=module.security.alicloud_security_group_rule.ssh[0]",
+				"-replace=module.security.alicloud_security_group_rule.k8s_api[0]",
+				"-var-file=" + tmpPath, "-var-file=" + tfVarsAbs, "-var=env_id=" + d.EnvID,
+				"-var=ssh_allowed_cidr=" + cidrVal}
+			fmt.Fprintf(os.Stderr, "deploy-engine: 安全组同步强制 replace 规则，ssh_allowed_cidr=%s\n", cidrVal)
 			if regionVal != "" {
 				sgArgs = append(sgArgs, "-var=region="+regionVal)
 			}
@@ -299,10 +327,10 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 			}
 			if p := d.projectTfvarsPath(); p != "" {
 				if _, err := os.Stat(p); err == nil {
-					// 在 -var-file=tfVarsAbs 前插入 project tfvars，与完整 apply 顺序一致
-					newArgs := append([]string{}, sgArgs[:6]...) // apply + 2×-target + -var-file=tmpPath
+					// 在 -var-file=tfVarsAbs 前插入 project tfvars（sgArgs 前 7 项含 apply/-target/-replace/-var-file=tmpPath）
+					newArgs := append([]string{}, sgArgs[:7]...)
 					newArgs = append(newArgs, "-var-file="+p)
-					newArgs = append(newArgs, sgArgs[6:]...)
+					newArgs = append(newArgs, sgArgs[7:]...)
 					sgArgs = newArgs
 				}
 			}
@@ -365,9 +393,18 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		if diskCategoryVal == "" {
 			diskCategoryVal = mergedVars.DiskCategory
 		}
+		// #region agent log
+		agentLog("driver.go:Up:disk_category", "disk_category resolution", "H1", map[string]interface{}{
+			"tfvarsPath": tfvars, "diskFromTfvars": diskFromTfvars, "mergedVarsDiskCategory": mergedVars.DiskCategory, "diskCategoryVal": diskCategoryVal, "willAppendVar": diskCategoryVal != "",
+		})
+		// #endregion
 		if diskCategoryVal != "" {
 			applyArgs = append(applyArgs, "-var=disk_category="+diskCategoryVal)
 			fmt.Fprintf(os.Stderr, "deploy-engine: 使用系统盘类型 disk_category=%s（来自 tfvars 或 deploy 配置）\n", diskCategoryVal)
+		}
+		if cidrVal := sshAllowedCidrFromTfvars(tfvars); cidrVal != "" {
+			applyArgs = append(applyArgs, "-var=ssh_allowed_cidr="+cidrVal)
+			fmt.Fprintf(os.Stderr, "deploy-engine: 使用 ssh_allowed_cidr=%s（来自 tfvars）\n", cidrVal)
 		}
 
 		// #region agent log
@@ -378,7 +415,7 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		if regionVal != "" {
 			applyEnv["ALICLOUD_REGION"] = regionVal
 		}
-		if err := d.runTerraform(ctx, tfDir, applyArgs, applyEnv); err != nil {
+		if err := d.runTerraformApplyWithStderrLog(ctx, tfDir, applyArgs, applyEnv); err != nil {
 			// #region agent log
 			agentLog("driver.go:Up:after-apply", "terraform apply error", "H1", map[string]interface{}{"error": err.Error()})
 			// #endregion
@@ -480,14 +517,20 @@ func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) 
 		fmt.Fprintln(os.Stderr, "deploy-engine: FULL_DESTROY=1，完整销毁（VPC/NAS/OSS/ECS 等），下次 deploy 将按 tfvars 的 region 重新创建")
 	}
 	destroyArgs = append(destroyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+envID, "-var=project="+project, "-var=config_file="+configFileAbs)
-	// destroy 必须使用 state 中资源的实际 region，否则 tfvars 改过 region 后 provider 会调用错误地域的 API 导致销毁失败
-	if region := d.regionFromTerraformState(ctx, tfDir); region != "" {
-		destroyArgs = append(destroyArgs, "-var=region="+region)
-	} else if region := regionFromTfvars(tfvars); region != "" {
-		destroyArgs = append(destroyArgs, "-var=region="+region)
+	// destroy 必须使用 state 中资源的实际 region，且强制子进程 ALICLOUD_REGION，否则 OSS/ECS 等会请求错误地域导致 403（如 GetBucketCORS）
+	destroyRegion := d.regionFromTerraformState(ctx, tfDir)
+	if destroyRegion == "" {
+		destroyRegion = regionFromTfvars(tfvars)
+	}
+	if destroyRegion != "" {
+		destroyArgs = append(destroyArgs, "-var=region="+destroyRegion)
 	}
 	destroyArgs = append(destroyArgs, "-auto-approve")
-	err := d.runTerraform(ctx, tfDir, destroyArgs, nil)
+	destroyEnv := map[string]string{}
+	if destroyRegion != "" {
+		destroyEnv["ALICLOUD_REGION"] = destroyRegion
+	}
+	err := d.runTerraform(ctx, tfDir, destroyArgs, destroyEnv)
 	if err != nil {
 		return fmt.Errorf("aliyun: terraform destroy: %w", err)
 	}
@@ -528,6 +571,50 @@ func (d *Driver) runTerraform(ctx context.Context, tfDir string, args []string, 
 		cmd.Env = env
 	}
 	return cmd.Run()
+}
+
+const maxStderrLogLen = 4000
+
+// runTerraformApplyWithStderrLog 仅用于 apply：将 stderr 同时输出到终端并写入 debug 日志（失败时），便于排查 InvalidSystemDiskCategory 等错误。
+func (d *Driver) runTerraformApplyWithStderrLog(ctx context.Context, tfDir string, args []string, envOverrides map[string]string) error {
+	var stderrBuf bytes.Buffer
+	cmd := exec.CommandContext(ctx, "terraform", args...)
+	cmd.Dir = tfDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	if len(envOverrides) > 0 {
+		env := os.Environ()
+		overridden := make(map[string]bool)
+		for _, e := range env {
+			if idx := strings.IndexByte(e, '='); idx > 0 {
+				overridden[e[:idx]] = true
+			}
+		}
+		for k, v := range envOverrides {
+			if !overridden[k] {
+				env = append(env, k+"="+v)
+			} else {
+				for i, e := range env {
+					if strings.HasPrefix(e, k+"=") {
+						env[i] = k + "=" + v
+						break
+					}
+				}
+			}
+		}
+		cmd.Env = env
+	}
+	err := cmd.Run()
+	if err != nil && stderrBuf.Len() > 0 {
+		stderrStr := strings.TrimSpace(stderrBuf.String())
+		if len(stderrStr) > maxStderrLogLen {
+			stderrStr = stderrStr[len(stderrStr)-maxStderrLogLen:]
+		}
+		// #region agent log
+		agentLog("driver.go:runTerraformApplyWithStderrLog", "terraform apply stderr on failure", "H1", map[string]interface{}{"stderrSnippet": stderrStr})
+		// #endregion
+	}
+	return err
 }
 
 // resourceInState 检查 state list 中是否包含指定资源地址（子串匹配）。

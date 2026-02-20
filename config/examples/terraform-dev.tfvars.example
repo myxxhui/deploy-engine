@@ -16,4 +16,6 @@ spot_strategy     = "SpotAsPriceGo"
 spot_price_limit  = 0.5
 eip_bandwidth     = 100
 disk_category     = "cloud_efficiency"
-ram_role_name     = ""
+# OSS：不设置 oss_use_existing_bucket 则自动创建 deploy-engine-k3s-storage 并上传脚本；桶与对象默认 public-read-write 公网可下载可上传
+init_script_acl   = "public-read-write"
+# ram_role_name     = "App-infra-manage"
