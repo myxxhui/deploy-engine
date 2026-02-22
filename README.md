@@ -66,7 +66,7 @@ deploy-engine/
 
 ### OSS 初始化脚本与 RAM Role
 
-ECS 首次启动时，user-data 会从 OSS 下载初始化脚本（`scripts/titan-init.sh`）以安装 K3s。**当前默认**：该 OSS 对象配置为 `public-read`，ECS 可直接通过 HTTP 下载。若账号不允许 Bucket 公共读，请为 ECS 实例绑定 **RAM Role**，并为该 Role 授予 OSS 读权限（如 `oss:GetObject` 针对目标 Bucket）。user-data 中的 ossutil 会通过 ECS 实例元数据服务（`http://100.100.100.200/latest/meta-data/ram/security-credentials/`）自动获取临时凭证，无需在脚本内配置 AKSK。在 `terraform.tfvars` 中可设置 `ram_role_name` 指定已创建的 RAM Role 名称（需在控制台预先创建 Role 并附加 OSS 读权限策略）。
+ECS 首次启动时，user-data 会从 OSS 下载初始化脚本（`scripts/k3s-init.sh`）以安装 K3s。**当前默认**：该 OSS 对象配置为 `public-read`，ECS 可直接通过 HTTP 下载。若账号不允许 Bucket 公共读，请为 ECS 实例绑定 **RAM Role**，并为该 Role 授予 OSS 读权限（如 `oss:GetObject` 针对目标 Bucket）。user-data 中的 ossutil 会通过 ECS 实例元数据服务（`http://100.100.100.200/latest/meta-data/ram/security-credentials/`）自动获取临时凭证，无需在脚本内配置 AKSK。在 `terraform.tfvars` 中可设置 `ram_role_name` 指定已创建的 RAM Role 名称（需在控制台预先创建 Role 并附加 OSS 读权限策略）。
 
 ## 资源与成本
 

@@ -92,6 +92,64 @@ make down <project> <env>
 | instance_password 未设置 | tfvars 未填或环境变量未设 | 设置环境变量 `TF_VAR_instance_password` 或在 tfvars 中填写至少 8 位密码。 |
 | 配置文件不存在 | 未在 ConfigRoot 下按扁平命名准备文件 | 确认 **config/** 下存在 `terraform-<project>-<env>.tfvars`、`<project>-<env>.yaml` 及 **config/deploy.yaml**，见 1.2。 |
 | 网络/凭证失败 | 本机无法访问阿里云或 AKSK 错误 | 检查网络与 `ALICLOUD_ACCESS_KEY`、`ALICLOUD_SECRET_KEY` 或 `~/.alicloud/config.json`。 |
+| InvalidAccessGroup.AlreadyAttached | NAS Access Group 仍被 Mount Target 引用时 Terraform 尝试销毁 | 见下方 1.9 NAS AlreadyAttached 恢复。 |
+| Error acquiring the state lock | 残留的 terraform import/apply 进程持有锁 | 执行 `pkill -9 -f "terraform import"` 后重试；或见下方 1.10。 |
+| InvalidSystemDiskCategory.ValueNotSupported | 系统盘类型与实例/地域不匹配 | IoOptimized 实例可用 `cloud_essd`、`cloud_efficiency` 或 `cloud_ssd`；若报错可依次尝试。 |
+
+### 1.9 NAS AlreadyAttached 恢复
+
+若 Terraform apply 报错 `The specified Access Group is still attached by some MountTarget(s)`，说明 Terraform 在尝试销毁 Access Group，但 Mount Target 仍在使用它。可通过**一次性的 state 修复**恢复：
+
+**方式一：使用 make 恢复（推荐）**
+
+```bash
+make fix-nas-state <project> <env>
+# 示例：make fix-nas-state myapp dev
+```
+
+脚本会从 `config/<project>-<env>.yaml` 读取 `global.project_name`，自动执行 state rm 与 import。完成后执行 `make deploy <project> <env>`。
+
+**方式二：手动执行**
+
+1. 进入 Terraform 目录：`cd deploy/terraform/alicloud`
+2. 从 state 移除：`terraform state rm 'module.nas.alicloud_nas_access_group.main'`
+3. 重新导入（将 `deploy-engine-demo`、`dev` 替换为你的 project_name、env_id）：
+   `terraform import 'module.nas.alicloud_nas_access_group.main[0]' 'deploy-engine-demo_nas_group_dev:standard'`
+4. 确保 tfvars 中 `nas_use_existing_access_group = false`，然后执行 `make deploy <project> <env>`。
+
+### 1.10 OSS 初始化脚本与 K3s 部署说明
+
+**逻辑**：
+- **新建 ECS**：user-data 在首次启动时从 OSS 下载 k3s-init.sh 并执行，部署 K3s
+- **ECS 已存在**：get-kubeconfig 会检测 K3s 是否部署；若未部署则 SSH 远程下载 k3s-init.sh 并执行，无需重建 ECS
+- **Chart 部署**：K3s 就绪后，deploy-engine 会按 deploy 配置执行 helm install/upgrade（若配置了 chart_path 或 chart_repo_url+chart_name）
+
+### 1.11 OSS 脚本上传/下载说明
+
+**桶与对象**（来自 Terraform 输出）：
+- **桶名**：tfvars 中指定 `oss_bucket_name` 则检查存在性（存在复用、不存在创建）；不指定则创建 `{project_name}-{env_id}-{random}` 新桶
+- **对象 key**：`scripts/k3s-init.sh`
+- **下载 URL**：`https://{bucket}.oss-{region}.aliyuncs.com/scripts/k3s-init.sh`
+
+**当前配置示例**（terraform-myapp-dev.tfvars 指定 `oss_bucket_name = "deploy-engine-k3s-storage"` 时）：
+- 桶名：`deploy-engine-k3s-storage`
+- 地域：`cn-hongkong`
+- 下载 URL：`https://deploy-engine-k3s-storage.oss-cn-hongkong.aliyuncs.com/scripts/k3s-init.sh`
+
+**脚本未下载常见原因**：
+1. **桶级禁止公共读**：控制台开启「禁止公共读」后，对象 ACL 无法设为 public-read，HTTP 下载会 403
+2. **无 RAM Role**：对象为 private 时需 ECS 绑定 RAM Role 并通过 ossutil 下载；未配置则失败
+3. **上传失败**：make deploy 会先执行 `terraform plan -target=...` 检查脚本是否存在且无更新；不存在或本地有更新时才执行 `terraform apply` 上传，存在且无更新则跳过。上传失败会直接报错退出
+
+**处理建议**：若 HTTP 下载失败，在 tfvars 中设置 `ram_role_name` 并为该 Role 授予 OSS 读权限；或确认桶未禁止公共读且 `init_script_acl = "public-read"` 或 `"public-read-write"`。
+
+### 1.12 State Lock 恢复
+
+若 `make deploy` 或 `fix-nas-state` 报错 `Error acquiring the state lock`：
+
+1. 查找并终止残留的 Terraform 进程：`pkill -9 -f "terraform import"` 或 `pkill -9 -f "terraform apply"`
+2. 等待数秒后重试；锁会随进程结束自动释放
+3. `fix-nas-state` 脚本现已内置自动清理残留进程
 
 更多排错见 README「常见问题与排错」及 [Aliyun 驱动 README](pkg/provider/aliyun/README.md) 中「失败时检查顺序」。
 

@@ -103,14 +103,8 @@ variable "acr_namespace" {
   default     = ""
 }
 
-variable "oss_use_existing_bucket" {
-  description = "是否使用已存在的 OSS Bucket"
-  type        = bool
-  default     = false
-}
-
-variable "oss_existing_bucket_name" {
-  description = "已存在的 OSS Bucket 名称"
+variable "oss_bucket_name" {
+  description = "OSS 存储桶名称。指定时：检查存在则复用，不存在则创建；未指定（空）时：创建 {project_name}-{env_id}-{random} 新桶。默认可设为 deploy-engine-k3s-storage"
   type        = string
   default     = ""
 }

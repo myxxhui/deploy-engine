@@ -6,12 +6,12 @@ packages:
   - fuse
 
 write_files:
-  - path: /usr/local/bin/titan-log
+  - path: /usr/local/bin/k3s-init-log
     permissions: "0755"
     content: |
       #!/bin/bash
       log() {
-        echo "[$$(date +'%Y-%m-%d %H:%M:%S')] $$*" | tee -a /var/log/titan-init.log
+        echo "[$$(date +'%Y-%m-%d %H:%M:%S')] $$*" | tee -a /var/log/k3s-init.log
       }
       log "$$@"
 
@@ -40,88 +40,75 @@ runcmd:
   - systemctl enable ssh || systemctl enable sshd || true
   - |
       set -euo pipefail
-    LOG_FILE="/var/log/titan-init.log"
+    LOG_FILE="/var/log/k3s-init.log"
     mkdir -p "$(dirname "$LOG_FILE")"
-    
-      log() {
-      echo "[$$(date +'%Y-%m-%d %H:%M:%S')] $$*" | tee -a "$LOG_FILE"
-      }
 
-    log "=== Titan Infra Hub 初始化开始（精简版）==="
-    
+    log() {
+      echo "[$$(date +'%Y-%m-%d %H:%M:%S')] $$*" | tee -a "$LOG_FILE"
+    }
+
+    err_exit() {
+      log "❌ 错误: $$1"
+      log "退出码 1"
+      exit 1
+    }
+
+    log "=== K3s 集群初始化开始 ==="
+
+    # 检查 K3s 是否已部署，已部署则跳过脚本下载与初始化
+    if systemctl is-active --quiet k3s 2>/dev/null || [ -f /etc/rancher/k3s/k3s.yaml ]; then
+      log "K3s 已部署，跳过初始化脚本下载与执行"
+      log "=== K3s 集群初始化完成（跳过）==="
+      exit 0
+    fi
+
     OSS_BUCKET_NAME="${oss_bucket_name}"
     OSS_REGION="${oss_region}"
-    SCRIPT_PATH="scripts/titan-init.sh"
-    
-    log "从 OSS 下载初始化脚本: oss://${oss_bucket_name}/$SCRIPT_PATH"
-    
+    SCRIPT_PATH="scripts/k3s-init.sh"
+    OSS_URL="https://$${OSS_BUCKET_NAME}.oss-$${OSS_REGION}.aliyuncs.com/$${SCRIPT_PATH}"
+
+    log "K3s 未部署，从 OSS 下载初始化脚本: oss://$${OSS_BUCKET_NAME}/$${SCRIPT_PATH}"
+
     # 安装 ossutil（如果未安装）
     if ! command -v ossutil >/dev/null 2>&1; then
       log "安装 ossutil..."
-      wget -q http://gosspublic.alicdn.com/ossutil/1.7.14/ossutil64 -O /usr/local/bin/ossutil || {
-        log "⚠️  wget 失败，尝试 curl..."
-        curl -sL http://gosspublic.alicdn.com/ossutil/1.7.14/ossutil64 -o /usr/local/bin/ossutil || {
-          log "❌ ossutil 下载失败"
-        exit 1
-        }
-      }
+      wget -q http://gosspublic.alicdn.com/ossutil/1.7.14/ossutil64 -O /usr/local/bin/ossutil 2>/dev/null || \
+        curl -sL http://gosspublic.alicdn.com/ossutil/1.7.14/ossutil64 -o /usr/local/bin/ossutil 2>/dev/null || \
+        err_exit "ossutil 下载失败"
       chmod +x /usr/local/bin/ossutil
       log "✅ ossutil 安装完成"
-      fi
-
-    # 优先使用 HTTP 下载（如果文件是公网可读的）
-    OSS_URL="https://${oss_bucket_name}.oss-${oss_region}.aliyuncs.com/$SCRIPT_PATH"
-    log "尝试 HTTP 下载脚本: $${OSS_URL}"
-    
-    if curl -f -s "$${OSS_URL}" -o /tmp/titan-init.sh || wget -q "$${OSS_URL}" -O /tmp/titan-init.sh; then
-      log "✅ 脚本下载成功（HTTP）"
-    else
-      log "⚠️  HTTP 下载失败，尝试使用 ossutil（RAM Role）..."
-          
-      # 获取 RAM Role 名称
-      log "获取 RAM Role 名称..."
-      RAM_ROLE_NAME=$(curl -s --max-time 5 http://100.100.100.200/latest/meta-data/ram/security-credentials/ 2>/dev/null | head -1 || echo "")
-      
-      if [ -z "$${RAM_ROLE_NAME}" ]; then
-        log "❌ 无法获取 RAM Role 名称，且 HTTP 下载失败"
-        log "   请检查："
-        log "   1. OSS Bucket 是否配置为公开读取"
-        log "   2. 或为 ECS 实例配置 RAM Role"
-        exit 1
-      fi
-
-      log "RAM Role 名称: $${RAM_ROLE_NAME}"
-
-      # 使用 ossutil 下载脚本（通过 RAM Role）
-      # 注意：ossutil 会自动使用 ECS 实例的 RAM Role（如果配置了）
-      log "使用 ossutil 下载脚本（RAM Role）..."
-      ossutil cp "oss://${oss_bucket_name}/$SCRIPT_PATH" /tmp/titan-init.sh \
-        --endpoint "oss-${oss_region}.aliyuncs.com" 2>/dev/null || {
-        log "❌ 脚本下载失败（ossutil），尝试 HTTP 下载..."
-        # 如果 ossutil 失败，尝试 HTTP 下载
-        OSS_URL="https://${oss_bucket_name}.oss-${oss_region}.aliyuncs.com/$SCRIPT_PATH"
-        curl -f -s "$${OSS_URL}" -o /tmp/titan-init.sh || wget -q "$${OSS_URL}" -O /tmp/titan-init.sh || {
-          log "❌ 所有下载方式均失败"
-          log "   请检查："
-          log "   1. ECS 实例是否配置了 RAM Role"
-          log "   2. RAM Role 是否有 OSS 读取权限"
-          log "   3. OSS Bucket 是否存在: ${oss_bucket_name}"
-        exit 1
-        }
-      }
     fi
 
-    if [ ! -f /tmp/titan-init.sh ]; then
-      log "❌ 脚本文件不存在"
-        exit 1
-      fi
+    # 优先 HTTP 下载
+    log "尝试 HTTP 下载: $${OSS_URL}"
+    DOWNLOAD_OK=false
+    if curl -f -s "$${OSS_URL}" -o /tmp/k3s-init.sh 2>/dev/null || wget -q "$${OSS_URL}" -O /tmp/k3s-init.sh 2>/dev/null; then
+      DOWNLOAD_OK=true
+      log "✅ 脚本下载成功（HTTP）"
+    fi
 
-    chmod +x /tmp/titan-init.sh
-    
+    # HTTP 失败则尝试 ossutil（RAM Role）
+    if [ "$${DOWNLOAD_OK}" != "true" ]; then
+      log "HTTP 下载失败，尝试 ossutil（RAM Role）..."
+      RAM_ROLE_NAME=$(curl -s --max-time 5 http://100.100.100.200/latest/meta-data/ram/security-credentials/ 2>/dev/null | head -1 || echo "")
+      if [ -n "$${RAM_ROLE_NAME}" ]; then
+        if ossutil cp "oss://$${OSS_BUCKET_NAME}/$${SCRIPT_PATH}" /tmp/k3s-init.sh --endpoint "oss-$${OSS_REGION}.aliyuncs.com" 2>/dev/null; then
+          DOWNLOAD_OK=true
+          log "✅ 脚本下载成功（ossutil）"
+        fi
+      fi
+    fi
+
+    if [ "$${DOWNLOAD_OK}" != "true" ]; then
+      err_exit "OSS 脚本下载失败。请检查：1) 存储桶 ${oss_bucket_name} 中是否存在 $${SCRIPT_PATH}；2) make deploy 是否已执行并成功上传脚本；3) 若桶为私有，ECS 是否已绑定 ram_role_name 且 Role 有 OSS 读权限。上传/下载失败时请直接报错退出。"
+    fi
+
+    if [ ! -f /tmp/k3s-init.sh ] || [ ! -s /tmp/k3s-init.sh ]; then
+      err_exit "下载的脚本文件为空或不存在"
+    fi
+
+    chmod +x /tmp/k3s-init.sh
     log "执行初始化脚本..."
-    /tmp/titan-init.sh || {
-      log "❌ 初始化脚本执行失败"
-                exit 1
-    }
-    
-    log "=== Titan Infra Hub 初始化完成 ==="
+    /tmp/k3s-init.sh || err_exit "初始化脚本执行失败，请查看 /var/log/k3s-init.log"
+
+    log "=== K3s 集群初始化完成 ==="

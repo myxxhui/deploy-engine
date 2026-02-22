@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -183,6 +185,23 @@ func diskCategoryFromTfvars(tfvarsPath string) string {
 	return ""
 }
 
+// nasUseExistingAccessGroupFromTfvars 从 tfvars 解析 nas_use_existing_access_group；缺省 false，避免误销毁 AG 导致 AlreadyAttached
+func nasUseExistingAccessGroupFromTfvars(tfvarsPath string) bool {
+	f, err := os.Open(tfvarsPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	re := regexp.MustCompile(`^\s*nas_use_existing_access_group\s*=\s*(true|false)\s*$`)
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if m := re.FindStringSubmatch(sc.Text()); len(m) == 2 {
+			return m[1] == "true"
+		}
+	}
+	return false
+}
+
 // sshAllowedCidrFromTfvars 从 tfvars 解析 ssh_allowed_cidr，供 apply 时显式传入以确保安全组规则同步生效。
 func sshAllowedCidrFromTfvars(tfvarsPath string) string {
 	f, err := os.Open(tfvarsPath)
@@ -218,6 +237,129 @@ func (d *Driver) instancePasswordFromEnvOrFile(tfvarsPath string) (string, error
 		}
 	}
 	return "", fmt.Errorf("instance_password 未设置：请设置环境变量 TF_VAR_instance_password 或在 %s 中配置 instance_password", tfvarsPath)
+}
+
+// ensureOSSScriptUploaded 确保 OSS 初始化脚本已上传：先 plan 检查是否存在且无更新；不存在或本地有更新则上传，存在且无更新则跳过。
+func (d *Driver) ensureOSSScriptUploaded(ctx context.Context, tfDir, tfvars string, merged *config.LayerConfig, instancePassword string) error {
+	fmt.Fprintln(os.Stderr, "deploy-engine: 检查 OSS 初始化脚本（存在且无更新则跳过上传）...")
+	// 切换桶时，避免 Terraform 尝试从旧桶 DeleteObject（旧桶可能已销毁导致 NoSuchBucket）
+	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script")
+	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script[0]")
+	tfVarsAbs, _ := filepath.Abs(tfvars)
+	mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
+	configFilePath := mergedVars.ConfigFile
+	if configFilePath != "" && !filepath.IsAbs(configFilePath) {
+		configFilePath = filepath.Join(d.configRoot(), configFilePath)
+	}
+	if configFilePath == "" {
+		configFilePath = filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
+	}
+	if configFilePath != "" {
+		if _, err := os.Stat(configFilePath); err == nil {
+			mergedVars.ConfigFile = configFilePath
+		}
+	}
+	tmpFile, err := os.CreateTemp("", "deploy-engine-oss-*.tfvars")
+	if err != nil {
+		return fmt.Errorf("创建临时 tfvars: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	if err := config.WriteAliyunTerraformVarsToFile(mergedVars, tmpPath); err != nil {
+		return fmt.Errorf("写入 Merged 变量: %w", err)
+	}
+	regionVal := regionFromTfvars(tfvars)
+	if regionVal == "" {
+		regionVal = mergedVars.Region
+	}
+	baseArgs := d.buildOSSTargetArgs(tmpPath, tfVarsAbs, tfvars)
+	env := map[string]string{}
+	if regionVal != "" {
+		env["ALICLOUD_REGION"] = regionVal
+	}
+
+	// plan -detailed-exitcode: 0=无变更 1=错误 2=有待执行变更。
+	// -refresh=false 避免 plan 时对已存在桶（可能跨 region 或跨账号）执行 GetObjectDetailedMeta 导致 NoSuchBucket 误报
+	planArgs := append([]string{"plan", "-detailed-exitcode", "-refresh=false", "-target=module.oss"}, baseArgs...)
+	hasChanges, planErr := d.runTerraformPlanExitCode(ctx, tfDir, planArgs, env)
+	if planErr != nil {
+		return fmt.Errorf("terraform plan 检查 OSS 脚本失败: %w", planErr)
+	}
+	if !hasChanges {
+		fmt.Fprintln(os.Stderr, "deploy-engine: OSS 初始化脚本已存在且无更新，跳过上传")
+		return nil
+	}
+
+	// 存在变更：执行上传。 -refresh=false 与 plan 一致，避免对已存在桶 refresh 触发 NoSuchBucket
+	fmt.Fprintln(os.Stderr, "deploy-engine: OSS 初始化脚本不存在或本地有更新，正在上传...")
+	applyArgs := append([]string{"apply", "-auto-approve", "-refresh=false", "-target=module.oss"}, baseArgs...)
+	if err := d.runTerraformApplyWithStderrLog(ctx, tfDir, applyArgs, env); err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "deploy-engine: OSS 初始化脚本已就绪")
+	return nil
+}
+
+// buildOSSTargetArgs 构建 OSS target 所需的 -var-file 和 -var 参数。
+func (d *Driver) buildOSSTargetArgs(tmpPath, tfVarsAbs, tfvars string) []string {
+	args := []string{"-var-file=" + tmpPath}
+	if p := d.projectTfvarsPath(); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			args = append(args, "-var-file="+p)
+		}
+	}
+	args = append(args, "-var-file="+tfVarsAbs, "-var=env_id="+d.EnvID)
+	if v := regionFromTfvars(tfvars); v != "" {
+		args = append(args, "-var=region="+v)
+	}
+	if v := diskCategoryFromTfvars(tfvars); v != "" {
+		args = append(args, "-var=disk_category="+v)
+	}
+	if v := sshAllowedCidrFromTfvars(tfvars); v != "" {
+		args = append(args, "-var=ssh_allowed_cidr="+v)
+	}
+	args = append(args, "-var=nas_use_existing_access_group="+strconv.FormatBool(nasUseExistingAccessGroupFromTfvars(tfvars)))
+	return args
+}
+
+// runTerraformPlanExitCode 执行 terraform plan -detailed-exitcode，返回是否有待执行变更。0=无变更 1=错误 2=有变更。
+func (d *Driver) runTerraformPlanExitCode(ctx context.Context, tfDir string, args []string, envOverrides map[string]string) (hasChanges bool, err error) {
+	cmd := exec.CommandContext(ctx, "terraform", args...)
+	cmd.Dir = tfDir
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if len(envOverrides) > 0 {
+		env := os.Environ()
+		for k, v := range envOverrides {
+			found := false
+			for i, e := range env {
+				if strings.HasPrefix(e, k+"=") {
+					env[i] = k + "=" + v
+					found = true
+					break
+				}
+			}
+			if !found {
+				env = append(env, k+"="+v)
+			}
+		}
+		cmd.Env = env
+	}
+	runErr := cmd.Run()
+	if runErr == nil {
+		return false, nil // exit 0: no changes
+	}
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) {
+		code := exitErr.ExitCode()
+		if code == 2 {
+			return true, nil // changes present
+		}
+		if code == 1 {
+			return false, runErr // plan error
+		}
+	}
+	return false, runErr
 }
 
 // ecsInstanceInState 检查 Terraform state 中是否仍存在 ECS 实例（destroy 后 output 可能仍残留旧值，须以 state 为准）。
@@ -284,13 +426,19 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 
 	// 若 Terraform 状态中已有 ECS（instance_id、public_ip 有效），则跳过完整 apply，但仍对安全组规则做定向 apply 以同步 ssh_allowed_cidr 等
 	instanceID, publicIP, skipApply := d.tryExistingOutputs(ctx, tfDir)
+
+	// 始终先确保 OSS 初始化脚本已上传：K3s 未部署时 ECS 需从存储桶下载；上传失败则直接报错退出
+	var merged *config.LayerConfig
+	if cfg != nil && cfg.Merged != nil {
+		merged = cfg.Merged
+	}
+	if err := d.ensureOSSScriptUploaded(ctx, tfDir, tfvars, merged, instancePassword); err != nil {
+		return nil, fmt.Errorf("aliyun: OSS 初始化脚本上传失败（请检查 Bucket 权限、oss_bucket_name 配置）: %w", err)
+	}
+
 	if skipApply {
 		fmt.Fprintln(os.Stderr, "deploy-engine: 检测到已有 ECS/K3s，跳过完整 Terraform apply；正在同步安全组规则（ssh_allowed_cidr/出口 IP）...")
 		tfVarsAbs, _ := filepath.Abs(tfvars)
-		var merged *config.LayerConfig
-		if cfg != nil && cfg.Merged != nil {
-			merged = cfg.Merged
-		}
 		mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
 		configFilePath := filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
 		if configFilePath != "" {
@@ -340,14 +488,9 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		}
 		fmt.Fprintln(os.Stderr, "deploy-engine: 继续获取 kubeconfig...")
 	} else {
-		_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script[0]")
 		tfVarsAbs, _ := filepath.Abs(tfvars)
 		applyArgs := []string{"apply", "-refresh=false", "-auto-approve"}
 
-		var merged *config.LayerConfig
-		if cfg != nil && cfg.Merged != nil {
-			merged = cfg.Merged
-		}
 		mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
 		configFilePath := mergedVars.ConfigFile
 		if configFilePath != "" && !filepath.IsAbs(configFilePath) {
@@ -406,6 +549,9 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 			applyArgs = append(applyArgs, "-var=ssh_allowed_cidr="+cidrVal)
 			fmt.Fprintf(os.Stderr, "deploy-engine: 使用 ssh_allowed_cidr=%s（来自 tfvars）\n", cidrVal)
 		}
+		// 显式传入 nas_use_existing_access_group，避免缺省或解析异常导致误销毁 AG（AlreadyAttached）
+		nasUseExisting := nasUseExistingAccessGroupFromTfvars(tfvars)
+		applyArgs = append(applyArgs, "-var=nas_use_existing_access_group="+strconv.FormatBool(nasUseExisting))
 
 		// #region agent log
 		agentLog("driver.go:Up:before-apply", "calling terraform apply", "H1", map[string]interface{}{"tfDir": tfDir})
@@ -490,7 +636,7 @@ func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) 
 	if _, err := os.Stat(tfvars); os.IsNotExist(err) {
 		return fmt.Errorf("aliyun: tfvars 不存在: %s（无法执行 destroy）", tfvars)
 	}
-	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script[0]")
+	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script")
 	tfVarsAbs, _ := filepath.Abs(tfvars)
 	project := d.Project
 	envID := d.EnvID

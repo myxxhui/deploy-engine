@@ -69,7 +69,7 @@ module "nas" {
 }
 
 locals {
-  init_script_content = templatefile("${path.root}/../../bootstrap/scripts/titan-init-full.sh", {
+  init_script_content = templatefile("${path.root}/../../bootstrap/scripts/k3s-init-full.sh", {
     nas_mount_domain = module.nas.nas_mount_domain
     project_name     = local.project_name
     oss_bucket_name  = ""
@@ -89,8 +89,7 @@ module "oss" {
   vpc_id               = module.vpc.vpc_id
   region               = var.region
   common_tags          = local.common_tags
-  use_existing_bucket  = var.oss_use_existing_bucket
-  existing_bucket_name = var.oss_existing_bucket_name
+  oss_bucket_name = var.oss_bucket_name
   bucket_acl           = var.oss_bucket_acl
   nas_mount_domain     = module.nas.nas_mount_domain
   acr_server           = var.acr_server != "" ? var.acr_server : local.acr_server

@@ -1,7 +1,7 @@
 # Deploy Engine - make deploy <project> <env> / make down <project> <env>
 # 在仓库根目录执行；PROJECT 与 ENV 从目标参数解析，如 make deploy lighthouse dev
 
-KNOWN_TARGETS = deploy down kubeconfig help
+KNOWN_TARGETS = deploy down kubeconfig help build fix-nas-state
 ARGS = $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
 PROJECT = $(firstword $(ARGS))
 ENV = $(if $(word 2,$(ARGS)),$(word 2,$(ARGS)),dev)
@@ -26,7 +26,7 @@ lighthouse dev prod:
 %:
 	@:
 
-.PHONY: deploy down kubeconfig help build lighthouse dev prod
+.PHONY: deploy down kubeconfig help build lighthouse dev prod fix-nas-state
 
 # 源码更新时自动重建；无依赖或 BIN 不存在时也会构建
 build: $(BIN)
@@ -48,6 +48,15 @@ help:
 	@echo "从应用仓执行: CONFIG_ROOT=$$(pwd)/config make -C deploy-engine deploy <project> <env>"
 	@echo "使用集群: export KUBECONFIG=$$(HOME)/.kube/config-<project>-<env> && kubectl get nodes"
 	@echo "  make build - 仅构建 bin/deploy-engine（deploy/down/kubeconfig 会按需自动构建）"
+	@echo "  make fix-nas-state <project> <env> - NAS AlreadyAttached 恢复（见 docs/VERIFICATION.md 1.9）"
+
+fix-nas-state:
+	@if [ -z "$(PROJECT)" ] || [ -z "$(ENV)" ]; then \
+		echo "用法: make fix-nas-state <project> <env>"; \
+		echo "示例: make fix-nas-state myapp dev"; exit 1; \
+	fi
+	@chmod +x scripts/fix-nas-state.sh 2>/dev/null || true
+	@CONFIG_ROOT="$${CONFIG_ROOT:-$(CURDIR)/config}" ./scripts/fix-nas-state.sh "$(PROJECT)" "$(ENV)" "$$CONFIG_ROOT"
 
 deploy: $(BIN)
 	@if [ -z "$(PROJECT)" ]; then \

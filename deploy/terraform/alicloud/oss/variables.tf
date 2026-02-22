@@ -25,14 +25,8 @@ variable "region" {
   default     = "cn-hongkong"
 }
 
-variable "use_existing_bucket" {
-  description = "是否使用已存在的 OSS Bucket（如果为 true，则使用 existing_bucket_name）"
-  type        = bool
-  default     = false
-}
-
-variable "existing_bucket_name" {
-  description = "已存在的 OSS Bucket 名称（当 use_existing_bucket=true 时使用）"
+variable "oss_bucket_name" {
+  description = "OSS 存储桶名称。指定时：检查存在则复用，不存在则创建；未指定（空）时：创建 {project_name}-{env_id}-{random} 新桶"
   type        = string
   default     = ""
 }

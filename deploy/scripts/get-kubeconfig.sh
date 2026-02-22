@@ -107,8 +107,7 @@ else
 fi
 log "密码长度: ${#PASSWORD}，来源: $PASSWORD_SOURCE"
 
-# 3. 等待 K3s 就绪并下载 kubeconfig（轮询检测，就绪后立即继续；可通过 KUBECONFIG_MAX_RETRIES、KUBECONFIG_SLEEP_SEC 调整）
-log "等待 K3s API Server 就绪..."
+# 3. 若 ECS 已存在但 K3s 未部署，远程下载并执行初始化脚本（无需重建 ECS）
 MAX_RETRIES="${KUBECONFIG_MAX_RETRIES:-60}"
 KUBECONFIG_SLEEP="${KUBECONFIG_SLEEP_SEC:-3}"
 RETRY_COUNT=0
@@ -117,6 +116,39 @@ RETRY_COUNT=0
 run_ssh() {
     SSHPASS="$PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "$@"
 }
+
+# 远程执行 K3s 初始化脚本：SSH 到 ECS，从 OSS 下载 k3s-init.sh 并执行（用于 ECS 已存在但 user-data 未成功执行的场景）
+remote_run_init_script() {
+    local oss_bucket oss_region oss_url
+    oss_bucket=$(terraform output -raw oss_bucket_name 2>/dev/null || echo "")
+    oss_region=$(terraform output -raw oss_region 2>/dev/null || echo "")
+    if [ -z "$oss_bucket" ] || [ -z "$oss_region" ]; then
+        error "无法获取 oss_bucket_name / oss_region，请检查 Terraform 输出"
+        return 1
+    fi
+    oss_url="https://${oss_bucket}.oss-${oss_region}.aliyuncs.com/scripts/k3s-init.sh"
+    log "ECS 已存在但 K3s 未部署，正在远程下载并执行初始化脚本: $oss_url"
+    run_ssh "curl -f -s '$oss_url' -o /tmp/k3s-init.sh || wget -q '$oss_url' -O /tmp/k3s-init.sh" 2>/dev/null || {
+        error "远程下载 OSS 脚本失败。请检查：1) 桶 $oss_bucket 权限（public-read 或 ram_role_name）；2) ECS 能否访问 OSS"
+        return 1
+    }
+    run_ssh "chmod +x /tmp/k3s-init.sh && /tmp/k3s-init.sh" 2>/dev/null || {
+        error "远程执行初始化脚本失败，请 SSH 查看 /var/log/k3s-init.log"
+        return 1
+    }
+    log "初始化脚本执行完成，等待 K3s 就绪..."
+    return 0
+}
+
+# 在等待循环前：若 K3s 未部署则先远程执行 init 脚本
+if ! run_ssh 'test -f /etc/rancher/k3s/k3s.yaml' 2>/dev/null; then
+    if ! remote_run_init_script; then
+        exit 1
+    fi
+fi
+
+# 4. 等待 K3s 就绪并下载 kubeconfig（轮询检测，就绪后立即继续）
+log "等待 K3s API Server 就绪..."
 
 # 每若干次重试输出一次诊断，便于排查「一直等不到就绪」的原因
 # 注意：以 SSH 退出码判断成败，不能以 stderr 非空判断（SSH 会把 "Permanently added ... to known_hosts" 打到 stderr，连接仍成功）
@@ -138,7 +170,23 @@ diagnose_k3s() {
         local has_yaml
         has_yaml=$(run_ssh "test -f /etc/rancher/k3s/k3s.yaml && echo 1 || echo 0" 2>/dev/null)
         if [ "$has_yaml" != "1" ]; then
-            warning "诊断: ECS 上未发现 K3s（/etc/rancher/k3s/k3s.yaml 不存在）。请 SSH 上机执行: cat /var/log/titan-init.log。若日志有「HTTP 下载失败」且「无法获取 RAM Role」，说明 OSS 初始化脚本为私有且 ECS 未绑定 RAM Role，请在 tfvars 中设置 ram_role_name 并授予 OSS 读权限后重建 ECS，或将 init_script_acl 设为 public-read 后 terraform apply 再重建 ECS。"
+            # 若尚未尝试过远程执行 init，则尝试一次（ECS 已存在但 user-data 未成功执行时补救）
+            if [ "${REMOTE_INIT_TRIED:-0}" = "0" ]; then
+                REMOTE_INIT_TRIED=1
+                if remote_run_init_script; then
+                    :
+                fi
+            fi
+            # 检查 init 是否因 OSS 下载失败而退出
+            local init_log
+            init_log=$(run_ssh "cat /var/log/k3s-init.log 2>/dev/null || true" 2>/dev/null)
+            if echo "$init_log" | grep -qE "OSS 脚本下载失败|下载失败|err_exit|脚本文件为空"; then
+                error "ECS 初始化失败：OSS 脚本下载或执行失败。请检查："
+                error "  1) 存储桶权限与 init_script_acl（public-read / ram_role_name）"
+                error "  2) /var/log/k3s-init.log 完整日志"
+                exit 1
+            fi
+            warning "诊断: ECS 上未发现 K3s。若 user-data 未执行，脚本会尝试远程下载并执行初始化。"
         else
             if ! run_ssh 'kubectl cluster-info --request-timeout=5' >/dev/null 2>&1; then
                 warning "诊断: K3s 已安装但 API 未就绪（可能仍在启动），请稍候"
@@ -169,14 +217,14 @@ if [ "$RETRY_COUNT" -eq "$MAX_RETRIES" ]; then
     exit 1
 fi
 
-# 4. 下载 kubeconfig
+# 5. 下载 kubeconfig
 log "下载 Kubeconfig..."
 run_ssh "cat /etc/rancher/k3s/k3s.yaml" > "$CONFIG_OUT" || {
     error "下载 Kubeconfig 失败"
     exit 1
 }
 
-# 5. 替换 server 地址为公网 IP（必须替换，确保远程访问）
+# 6. 替换 server 地址为公网 IP（必须替换，确保远程访问）
 log "替换 server 地址为公网 IP: $IP"
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS 使用 sed -i ''
@@ -193,10 +241,10 @@ if ! grep -q "server: https://$IP:6443" "$CONFIG_OUT"; then
 fi
 log "✅ Server 地址已替换为公网 IP"
 
-# 6. 设置权限
+# 7. 设置权限
 chmod 600 "$CONFIG_OUT"
 
-# 7. 验证连接
+# 8. 验证连接
 log "验证 Kubeconfig 连接..."
 export KUBECONFIG="$CONFIG_OUT"
 if kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then

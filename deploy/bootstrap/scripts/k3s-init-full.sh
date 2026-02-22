@@ -15,10 +15,10 @@ ACR_NAMESPACE="${acr_namespace}"
 
 # 日志函数（统一日志路径）
 log() {
-  echo "[$$(date +'%Y-%m-%d %H:%M:%S')] $$*" | tee -a /var/log/titan-init.log
+  echo "[$$(date +'%Y-%m-%d %H:%M:%S')] $$*" | tee -a /var/log/k3s-init.log
 }
 
-log "=== Titan Infra Hub 极速串行初始化开始 ==="
+log "=== K3s 集群初始化开始 ==="
 
 # 注意：SSH 服务启动已移至 runcmd 的第一项，确保即使初始化失败也能远程登录
 
@@ -59,7 +59,7 @@ MOUNT_MAX_RETRIES=15
 MOUNT_SUCCESS=false
 
 while [ $${MOUNT_RETRY_COUNT} -lt $${MOUNT_MAX_RETRIES} ]; do
-  if mount -t nfs -o vers=4.0,noresvport "$${NAS_MOUNT_DOMAIN}:/" "$${NAS_MOUNT_POINT}" 2>&1 | tee -a /var/log/titan-init.log; then
+  if mount -t nfs -o vers=4.0,noresvport "$${NAS_MOUNT_DOMAIN}:/" "$${NAS_MOUNT_POINT}" 2>&1 | tee -a /var/log/k3s-init.log; then
     log "✅ NAS 挂载成功！"
     MOUNT_SUCCESS=true
     break
@@ -170,7 +170,7 @@ if [ -d "$${NAS_MOUNT_POINT}" ] && mountpoint -q "$${NAS_MOUNT_POINT}" 2>/dev/nu
         --cluster-reset \
         --cluster-reset-restore-path "$${LATEST_SNAPSHOT}" \
         --token "$${K3S_TOKEN}" \
-        --data-dir /var/lib/rancher/k3s 2>&1 | tee -a /var/log/titan-init.log
+        --data-dir /var/lib/rancher/k3s 2>&1 | tee -a /var/log/k3s-init.log
       
       RESTORE_EXIT_CODE=$$?
       
@@ -627,4 +627,4 @@ else
   log "   可以稍后手动检查: kubectl get nodes"
 fi
 
-log "=== Titan Infra Hub 极速串行初始化完成 ==="
+log "=== K3s 集群初始化完成 ==="

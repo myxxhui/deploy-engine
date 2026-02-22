@@ -35,5 +35,5 @@
 2. **ECS 是否 Running**：阿里云控制台或 CLI 确认实例状态为运行中。
 3. **安全组 22 端口**：当前出口 IP 是否被安全组放行 22（SSH）；可在 ECS 控制台安全组规则中查看。
 4. **user-data / OSS 脚本**：若未使用 public-read，确认 ECS 已绑定 RAM Role 且该 Role 具备目标 OSS Bucket 的读权限；可在 ECS 上 `curl -s http://100.100.100.200/latest/meta-data/ram/security-credentials/` 查看是否返回 Role 名。
-5. **SSH 登录后查看初始化日志**：`ssh root@<public_ip>`（密码同 tfvars 中 instance_password），执行 `cat /var/log/titan-init.log` 查看 user-data 及 K3s 安装进度与报错。
+5. **SSH 登录后查看初始化日志**：`ssh root@<public_ip>`（密码同 tfvars 中 instance_password），执行 `cat /var/log/k3s-init.log` 查看 user-data 及 K3s 安装进度与报错。
 6. **K3s 服务与端口**：在 ECS 上执行 `systemctl status k3s`、`ss -tlnp | grep 6443`，确认 K3s 已启动且 6443 端口监听。若 K3s 未就绪，可等待数分钟后在本地再次执行 `make kubeconfig <project> <env>`。

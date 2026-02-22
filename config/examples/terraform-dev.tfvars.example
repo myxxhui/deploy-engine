@@ -15,7 +15,8 @@ enable_spot       = true
 spot_strategy     = "SpotAsPriceGo"
 spot_price_limit  = 0.5
 eip_bandwidth     = 100
-disk_category     = "cloud_efficiency"
-# OSS：不设置 oss_use_existing_bucket 则自动创建 deploy-engine-k3s-storage 并上传脚本；桶与对象默认 public-read-write 公网可下载可上传
+disk_category     = "cloud_essd"
 init_script_acl   = "public-read-write"
+nas_use_existing_access_group = false
+oss_bucket_name = "deploy-engine-k3s-storage"
 # ram_role_name     = "App-infra-manage"
