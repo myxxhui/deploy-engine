@@ -1,7 +1,7 @@
 # Deploy Engine - make deploy <project> <env> / make down <project> <env>
 # 在仓库根目录执行；PROJECT 与 ENV 从目标参数解析，如 make deploy lighthouse dev
 
-KNOWN_TARGETS = deploy down kubeconfig help build fix-nas-state
+KNOWN_TARGETS = deploy down kubeconfig nodes help build fix-nas-state
 ARGS = $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
 PROJECT = $(firstword $(ARGS))
 ENV = $(if $(word 2,$(ARGS)),$(word 2,$(ARGS)),dev)
@@ -26,7 +26,7 @@ lighthouse dev prod:
 %:
 	@:
 
-.PHONY: deploy down kubeconfig help build lighthouse dev prod fix-nas-state
+.PHONY: deploy down kubeconfig nodes help build lighthouse dev prod fix-nas-state
 
 # 源码更新时自动重建；无依赖或 BIN 不存在时也会构建
 build: $(BIN)
@@ -40,13 +40,14 @@ help:
 	@echo "  make deploy <project> <env>   - 部署（如 make deploy lighthouse dev）"
 	@echo "  make down <project> <env>      - 销毁（默认仅销毁 ECS；FULL_DESTROY=1 时完整销毁 VPC/NAS/OSS/ECS）"
 	@echo "  make kubeconfig <project> <env> - 输出 kubeconfig 到 stdout"
+	@echo "  make nodes <project> <env>      - 使用对应 kubeconfig 执行 kubectl get nodes（无需手动 export KUBECONFIG）"
 	@echo ""
 	@echo "kubeconfig 文件路径: ~/.kube/config-<project>-<env>"
-	@echo "示例: make deploy lighthouse dev  => 生成 ~/.kube/config-lighthouse-dev"
+	@echo "示例: make deploy myapp dev  => 生成 ~/.kube/config-myapp-dev；验收集群: make nodes myapp dev"
 	@echo ""
-	@echo "首次使用: 从 config/examples/ 复制示例到 config/ 并填写 terraform-<project>-<env>.tfvars、deploy.yaml、<project>-<env>.yaml（见《验证此模块逻辑》）"
+	@echo "首次使用: 从 config/examples/ 复制示例到 config/ 并填写（见《验证此模块逻辑》；示例以 config/examples/ 实际文件为准）"
 	@echo "从应用仓执行: CONFIG_ROOT=$$(pwd)/config make -C deploy-engine deploy <project> <env>"
-	@echo "使用集群: export KUBECONFIG=$$(HOME)/.kube/config-<project>-<env> && kubectl get nodes"
+	@echo "验收集群: make nodes <project> <env> 或 CONFIG_ROOT=$$(pwd)/config make -C deploy-engine nodes <project> <env>"
 	@echo "  make build - 仅构建 bin/deploy-engine（deploy/down/kubeconfig 会按需自动构建）"
 	@echo "  make fix-nas-state <project> <env> - NAS AlreadyAttached 恢复（见 docs/VERIFICATION.md 1.9）"
 
@@ -78,3 +79,13 @@ kubeconfig: $(BIN)
 		$(MAKE) -s help; echo "错误: 请指定 project，如 make kubeconfig lighthouse dev"; exit 1; \
 	fi
 	@./$(BIN) -cmd=kubeconfig -state=$(STATE_FILE) -env=$(ENV) -project=$(PROJECT) -root=$$(pwd) $(CONFIG_ROOT_FLAG)
+
+# 使用对应 kubeconfig 执行 kubectl get nodes，无需手动 export KUBECONFIG
+nodes:
+	@if [ -z "$(PROJECT)" ]; then \
+		$(MAKE) -s help; echo "错误: 请指定 project，如 make nodes myapp dev"; exit 1; \
+	fi
+	@if [ ! -f "$(KUBECONFIG_PATH)" ]; then \
+		echo "错误: kubeconfig 不存在 ($(KUBECONFIG_PATH))，请先执行 make deploy $(PROJECT) $(ENV) 或 make kubeconfig $(PROJECT) $(ENV)"; exit 1; \
+	fi
+	@KUBECONFIG="$(KUBECONFIG_PATH)" kubectl get nodes

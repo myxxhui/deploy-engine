@@ -117,6 +117,24 @@ run_ssh() {
     SSHPASS="$PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "$@"
 }
 
+# 等待 ECS SSH 就绪（Terraform 创建 ECS 后首次执行时 sshd 可能尚未启动，避免首次 OSS 下载因 SSH 未就绪而失败）
+wait_for_ssh() {
+    local max_attempts="${SSH_WAIT_MAX_ATTEMPTS:-30}"
+    local sleep_sec="${SSH_WAIT_SLEEP_SEC:-5}"
+    local attempt=1
+    while [ "$attempt" -le "$max_attempts" ]; do
+        if run_ssh 'exit 0' 2>/dev/null; then
+            log "SSH 已就绪 (尝试 $attempt/$max_attempts)"
+            return 0
+        fi
+        log "等待 ECS SSH 就绪... ($attempt/$max_attempts)，${sleep_sec}s 后重试"
+        sleep "$sleep_sec"
+        attempt=$((attempt + 1))
+    done
+    error "ECS SSH 在 ${max_attempts} 次尝试后仍不可用，请检查实例状态与安全组"
+    return 1
+}
+
 # 远程执行 K3s 初始化脚本：SSH 到 ECS，从 OSS 下载 k3s-init.sh 并执行（用于 ECS 已存在但 user-data 未成功执行的场景）
 remote_run_init_script() {
     local oss_bucket oss_region oss_url
@@ -128,10 +146,28 @@ remote_run_init_script() {
     fi
     oss_url="https://${oss_bucket}.oss-${oss_region}.aliyuncs.com/scripts/k3s-init.sh"
     log "ECS 已存在但 K3s 未部署，正在远程下载并执行初始化脚本: $oss_url"
-    run_ssh "curl -f -s '$oss_url' -o /tmp/k3s-init.sh || wget -q '$oss_url' -O /tmp/k3s-init.sh" 2>/dev/null || {
-        error "远程下载 OSS 脚本失败。请检查：1) 桶 $oss_bucket 权限（public-read 或 ram_role_name）；2) ECS 能否访问 OSS"
+    local max_dl_attempts="${OSS_DOWNLOAD_MAX_ATTEMPTS:-3}"
+    local dl_sleep="${OSS_DOWNLOAD_RETRY_SLEEP_SEC:-10}"
+    local dl_attempt=1
+    while [ "$dl_attempt" -le "$max_dl_attempts" ]; do
+        if run_ssh "curl -f -s '$oss_url' -o /tmp/k3s-init.sh || wget -q '$oss_url' -O /tmp/k3s-init.sh" 2>/dev/null; then
+            break
+        fi
+        if [ "$dl_attempt" -eq "$max_dl_attempts" ]; then
+            error "远程下载 OSS 脚本失败。请检查：1) 桶 $oss_bucket 权限（public-read 或 ram_role_name）；2) ECS 能否访问 OSS；3) 对象 scripts/k3s-init.sh 是否存在且可读"
+            log "ECS 上诊断（HTTP 状态）："
+            run_ssh "curl -s -o /dev/null -w '%{http_code}' '$oss_url' 2>/dev/null || echo 'curl 不可用'" 2>/dev/null | sed 's/^/  HTTP 状态: /' >&2
+            error "详见 docs/VERIFICATION.md 1.11 脚本未下载常见原因与处理建议"
+            return 1
+        fi
+        log "下载未成功，${dl_sleep}s 后重试 ($dl_attempt/$max_dl_attempts)..."
+        sleep "$dl_sleep"
+        dl_attempt=$((dl_attempt + 1))
+    done
+    if ! run_ssh "test -s /tmp/k3s-init.sh" 2>/dev/null; then
+        error "下载后 /tmp/k3s-init.sh 为空或不存在，请检查 OSS 对象 scripts/k3s-init.sh 是否已由 Terraform 上传"
         return 1
-    }
+    fi
     run_ssh "chmod +x /tmp/k3s-init.sh && /tmp/k3s-init.sh" 2>/dev/null || {
         error "远程执行初始化脚本失败，请 SSH 查看 /var/log/k3s-init.log"
         return 1
@@ -140,7 +176,8 @@ remote_run_init_script() {
     return 0
 }
 
-# 在等待循环前：若 K3s 未部署则先远程执行 init 脚本
+# 在等待循环前：先确保 ECS SSH 就绪，再判断是否需远程执行 init 脚本（避免首次 deploy 因 SSH 未就绪导致 OSS 下载报错）
+wait_for_ssh || exit 1
 if ! run_ssh 'test -f /etc/rancher/k3s/k3s.yaml' 2>/dev/null; then
     if ! remote_run_init_script; then
         exit 1

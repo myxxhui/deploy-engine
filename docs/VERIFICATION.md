@@ -18,21 +18,22 @@
 
 当在 deploy-engine 根目录执行时，默认 `-config=config/deploy.yaml`，**ConfigRoot = deploy-engine 的 config/**，所有配置文件均在 **config/** 下。**必须先从示例复制为正式配置文件后再执行部署，勿直接使用 .example 文件**（引擎按扩展名 .yaml/.json 解析，.example 会导致解析错误）。请将 `<project>`、`<env>` 替换为你的项目名与环境名。
 
-**目录与文件清单**
+**目录与文件清单**（来源以 **config/examples/ 下实际存在的文件**为准）
 
-| 用途 | 文件名（ConfigRoot = config/ 下） | 来源 |
-|------|-----------------------------------|------|
-| Terraform 变量 | `terraform-<project>-<env>.tfvars`（无 project 时为 `terraform-<env>.tfvars`） | 从 `config/examples/terraform-<project>-<env>.tfvars.example` **复制到 config/ 并重命名** |
-| 环境 YAML | `<project>-<env>.yaml`（无 project 时为 `default-<env>.yaml`） | 从 `config/examples/<project>-<env>.yaml.example` 或 `config/examples/default-<env>.yaml.example` **复制到 config/ 并重命名** |
-| 部署配置 | `deploy.yaml`/`deploy.json` 或 `<project>.yaml`/`<project>.json` | 从 **config/examples/deploy.yaml.example** **复制为 config/deploy.yaml**（或 config/deploy.json / config/<project>.yaml） |
+| 用途 | 文件名（ConfigRoot = config/ 下） | 来源（config/examples/ 内实际存在） |
+|------|-----------------------------------|--------------------------------------|
+| 部署配置 | `deploy.yaml` 或 `<project>.yaml` | **deploy.yaml.example** → 复制为 config/deploy.yaml |
+| Terraform 变量 | `terraform-<project>-<env>.tfvars`（无 project 时为 `terraform-<env>.tfvars`） | **terraform-dev.tfvars.example** → 复制为 config/terraform-<project>-<env>.tfvars（或 config/terraform-<env>.tfvars） |
+| 环境 YAML | `<project>-<env>.yaml`（无 project 时为 `default-<env>.yaml`） | **default-dev.yaml.example** → 复制为 config/<project>-<env>.yaml（或 config/default-<env>.yaml） |
 
-**操作示例（以 myapp、dev 为例；示例在 config/examples/，复制到 config/ 后填写实际值）**
+**操作示例（以 myapp、dev 为例；复制到 config/ 后填写实际值）**
 
 ```bash
-# 在 deploy-engine 根目录执行；示例文件在 config/examples/，目标在 config/
+# 在 deploy-engine 根目录执行；示例在 config/examples/，目标在 config/
 cp config/examples/deploy.yaml.example config/deploy.yaml
-cp config/examples/terraform-lighthouse-dev.tfvars.example config/terraform-myapp-dev.tfvars
-cp config/examples/lighthouse-dev.yaml.example config/myapp-dev.yaml
+cp config/examples/terraform-dev.tfvars.example config/terraform-myapp-dev.tfvars
+cp config/examples/default-dev.yaml.example config/myapp-dev.yaml
+# 编辑 config/terraform-myapp-dev.tfvars（instance_password、region 等）、config/myapp-dev.yaml（global.project_name、k3s.apiServer.domain）
 # 无 project 时：cp config/examples/terraform-dev.tfvars.example config/terraform-dev.tfvars
 # 无 project 时：cp config/examples/default-dev.yaml.example config/default-dev.yaml
 ```
@@ -59,12 +60,15 @@ make deploy <project> <env>
 
 ### 1.5 验收集群
 
+**推荐**：无需手动 export KUBECONFIG，直接执行（自动使用对应 kubeconfig）：
+
 ```bash
-export KUBECONFIG=~/.kube/config-<project>-<env>
-kubectl get nodes
+make nodes <project> <env>
 ```
 
-**成功表现**：能看到节点且状态为 Ready，即表示集群可用。
+例如：`make nodes myapp dev`。等价于 `KUBECONFIG=~/.kube/config-<project>-<env> kubectl get nodes`。
+
+**成功表现**：能看到节点且状态为 Ready，即表示集群可用。若需在后续命令中继续使用该集群，可执行 `export KUBECONFIG=~/.kube/config-<project>-<env>` 后再执行其他 kubectl。
 
 ### 1.6 验证后回收（必做）
 
@@ -80,7 +84,7 @@ make down <project> <env>
 
 - 存在 `.deploy/state-<project>-<env>.json`。
 - 存在 `~/.kube/config-<project>-<env>`。
-- `kubectl get nodes` 能列出节点且为 Ready。
+- `make nodes <project> <env>` 能列出节点且为 Ready（无需手动 export KUBECONFIG）。
 - 执行 `make down <project> <env>` 后，ECS/EIP 等资源释放，kubeconfig 被删除。
 
 ### 1.8 常见失败与排查
@@ -137,11 +141,15 @@ make fix-nas-state <project> <env>
 - 下载 URL：`https://deploy-engine-k3s-storage.oss-cn-hongkong.aliyuncs.com/scripts/k3s-init.sh`
 
 **脚本未下载常见原因**：
-1. **桶级禁止公共读**：控制台开启「禁止公共读」后，对象 ACL 无法设为 public-read，HTTP 下载会 403
-2. **无 RAM Role**：对象为 private 时需 ECS 绑定 RAM Role 并通过 ossutil 下载；未配置则失败
-3. **上传失败**：make deploy 会先执行 `terraform plan -target=...` 检查脚本是否存在且无更新；不存在或本地有更新时才执行 `terraform apply` 上传，存在且无更新则跳过。上传失败会直接报错退出
+1. **桶级禁止公共读**：控制台开启「禁止公共读」后，即使 Bucket ACL 显示为「公共读」/「公共读写」，实际访问仍可能 403。需在 OSS 控制台 → 该桶 → 权限控制 → 读写权限 中确认未启用「禁止公共读」或 Bucket Policy 阻断；或改为使用 `ram_role_name` + 对象 private。
+2. **对象不存在**：复用已有桶（tfvars 中指定 `oss_bucket_name`）时，Terraform 仍会上传 `scripts/k3s-init.sh`；若 apply 未成功完成 OSS 模块或对象被删，ECS 下载会 404。可在本机执行 `curl -s -o /dev/null -w '%{http_code}' https://<bucket>.oss-<region>.aliyuncs.com/scripts/k3s-init.sh` 检查（200=存在且可读）。
+3. **对象 ACL 为 private**：tfvars 中 `init_script_acl = "private"` 时需 ECS 绑定 `ram_role_name` 并通过签名或 ossutil 下载；未配置则 403。
+4. **无 RAM Role**：对象为 private 时需 ECS 绑定 RAM Role 并授予 OSS 读权限；未配置则失败。
+5. **上传失败**：make deploy 会先执行 `terraform plan -target=...` 检查脚本是否存在且无更新；不存在或本地有更新时才执行 `terraform apply` 上传，存在且无更新则跳过。上传失败会直接报错退出。
 
-**处理建议**：若 HTTP 下载失败，在 tfvars 中设置 `ram_role_name` 并为该 Role 授予 OSS 读权限；或确认桶未禁止公共读且 `init_script_acl = "public-read"` 或 `"public-read-write"`。
+**处理建议**：若桶已设为「公共读写」仍报下载失败，先在本机用 curl 测上述 URL 看返回 200/403/404；403 多为桶或对象被「禁止公共读」覆盖或对象 ACL 非 public。可：在 tfvars 中设置 `ram_role_name` 并为该 Role 授予 OSS 读权限、且 `init_script_acl = "private"`；或确认控制台未禁止公共读且 `init_script_acl = "public-read"` 或 `"public-read-write"`。
+
+**首次执行防失败**：get-kubeconfig 会在使用 SSH 前先等待 ECS SSH 就绪（避免 Terraform 刚创建 ECS 后 sshd 未启动即尝试下载导致失败），并对 OSS 下载做有限次重试。可调环境变量：`SSH_WAIT_MAX_ATTEMPTS`（默认 30）、`SSH_WAIT_SLEEP_SEC`（默认 5）；`OSS_DOWNLOAD_MAX_ATTEMPTS`（默认 3）、`OSS_DOWNLOAD_RETRY_SLEEP_SEC`（默认 10）。
 
 ### 1.12 State Lock 恢复
 
@@ -177,14 +185,14 @@ make fix-nas-state <project> <env>
 | Terraform 变量 | `terraform-<project>-<env>.tfvars`（无 project 时为 `terraform-<env>.tfvars`） |
 | 环境 YAML | `<project>-<env>.yaml`（无 project 时为 `default-<env>.yaml`） |
 
-从 deploy-engine 的 **config/examples/** 复制到业务仓 config/ 并重命名（不要直接使用 .example）。例如（以 myapp、dev 为例）：
+从 deploy-engine 的 **config/examples/** 复制到业务仓 config/ 并重命名（不要直接使用 .example）。**示例文件名以 config/examples/ 内实际存在的为准**（当前为 deploy.yaml.example、terraform-dev.tfvars.example、default-dev.yaml.example）。例如（以 myapp、dev 为例）：
 
 ```bash
 # 在业务仓根目录执行，假设 deploy-engine 在子目录 deploy-engine
 cp deploy-engine/config/examples/deploy.yaml.example config/deploy.yaml
-cp deploy-engine/config/examples/terraform-lighthouse-dev.tfvars.example config/terraform-myapp-dev.tfvars
-cp deploy-engine/config/examples/lighthouse-dev.yaml.example config/myapp-dev.yaml
-# 编辑 config/terraform-myapp-dev.tfvars（instance_password、ram_role_name 等）、config/myapp-dev.yaml
+cp deploy-engine/config/examples/terraform-dev.tfvars.example config/terraform-myapp-dev.tfvars
+cp deploy-engine/config/examples/default-dev.yaml.example config/myapp-dev.yaml
+# 编辑 config/terraform-myapp-dev.tfvars（instance_password、ram_role_name 等）、config/myapp-dev.yaml（global.project_name、k3s.apiServer.domain）
 ```
 
 ### 2.3 执行步骤
@@ -198,12 +206,13 @@ export TF_VAR_instance_password="your_password"   # 建议用环境变量，避�
 CONFIG_ROOT=$(pwd)/config make -C deploy-engine deploy <project> <env>
 ```
 
-**验收集群**
+**验收集群**（无需手动 export，直接执行）
 
 ```bash
-export KUBECONFIG=~/.kube/config-<project>-<env>
-kubectl get nodes
+CONFIG_ROOT=$(pwd)/config make -C deploy-engine nodes <project> <env>
 ```
+
+例如：`CONFIG_ROOT=$(pwd)/config make -C deploy-engine nodes myapp dev`。该命令自动使用 `~/.kube/config-<project>-<env>` 执行 `kubectl get nodes`。
 
 **回收**
 
@@ -226,7 +235,7 @@ CONFIG_ROOT=$(pwd)/config make -C deploy-engine kubeconfig <project> <env>
 ### 2.5 引用部署成功标准
 
 - 在业务仓 config/ 下已放置所需配置，且未修改 deploy-engine 目录内文件。
-- 执行 deploy 后存在 state 与 `~/.kube/config-<project>-<env>`；`kubectl get nodes` 可见 Ready 节点。
+- 执行 deploy 后存在 state 与 `~/.kube/config-<project>-<env>`；执行 `CONFIG_ROOT=$(pwd)/config make -C deploy-engine nodes <project> <env>` 可见 Ready 节点（无需手动 export KUBECONFIG）。
 - 执行 down 后 ECS/EIP 等释放，kubeconfig 被删除。
 
 **与本仓验证的差异**：本仓验证在 deploy-engine 根目录执行，ConfigRoot 默认为 deploy-engine 的 **config/**；引用部署在业务仓根目录执行，ConfigRoot 通过 `CONFIG_ROOT=$(pwd)/config` 指向业务仓的 config/，配置与（可选）state 均归属业务仓。
