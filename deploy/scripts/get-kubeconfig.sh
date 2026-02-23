@@ -18,20 +18,39 @@ else
     CONFIG_OUT="$KUBE_DIR/config-$ENV"
 fi
 TF_LIVE_DIR="$PROJECT_ROOT/deploy/terraform/alicloud"
-# 与 deploy-engine 扁平命名一致：① terraform-<project>-<env>.tfvars ② terraform-<env>.tfvars（无 project 或 project 级不存在时）③ 旧路径
-if [ -n "$PROJECT" ]; then
-    FLAT_TFVARS="$PROJECT_ROOT/config/terraform-${PROJECT}-${ENV}.tfvars"
-    FALLBACK_TFVARS="$PROJECT_ROOT/config/terraform-${ENV}.tfvars"
+# 与 deploy-engine 扁平命名一致：① 若调用方传入 CONFIG_ROOT 或 TFVARS_FILE（如从 diting-infra 调用时），优先使用；② 否则 PROJECT_ROOT/config 下 terraform-<project>-<env>.tfvars 等
+if [ -n "${TFVARS_FILE:-}" ] && [ -f "$TFVARS_FILE" ]; then
+    : # 调用方已指定且文件存在，直接使用
+elif [ -n "${CONFIG_ROOT:-}" ] && [ -d "$CONFIG_ROOT" ]; then
+    if [ -n "$PROJECT" ]; then
+        FLAT_TFVARS="$CONFIG_ROOT/terraform-${PROJECT}-${ENV}.tfvars"
+        FALLBACK_TFVARS="$CONFIG_ROOT/terraform-${ENV}.tfvars"
+    else
+        FLAT_TFVARS="$CONFIG_ROOT/terraform-${ENV}.tfvars"
+        FALLBACK_TFVARS=""
+    fi
+    if [ -f "$FLAT_TFVARS" ]; then
+        TFVARS_FILE="$FLAT_TFVARS"
+    elif [ -n "${FALLBACK_TFVARS:-}" ] && [ -f "$FALLBACK_TFVARS" ]; then
+        TFVARS_FILE="$FALLBACK_TFVARS"
+    else
+        TFVARS_FILE="$CONFIG_ROOT/environments/${ENV}/terraform.tfvars"
+    fi
 else
-    FLAT_TFVARS="$PROJECT_ROOT/config/terraform-${ENV}.tfvars"
-    FALLBACK_TFVARS=""
-fi
-if [ -f "$FLAT_TFVARS" ]; then
-    TFVARS_FILE="$FLAT_TFVARS"
-elif [ -n "${FALLBACK_TFVARS:-}" ] && [ -f "$FALLBACK_TFVARS" ]; then
-    TFVARS_FILE="$FALLBACK_TFVARS"
-else
-    TFVARS_FILE="$PROJECT_ROOT/config/environments/${ENV}/terraform.tfvars"
+    if [ -n "$PROJECT" ]; then
+        FLAT_TFVARS="$PROJECT_ROOT/config/terraform-${PROJECT}-${ENV}.tfvars"
+        FALLBACK_TFVARS="$PROJECT_ROOT/config/terraform-${ENV}.tfvars"
+    else
+        FLAT_TFVARS="$PROJECT_ROOT/config/terraform-${ENV}.tfvars"
+        FALLBACK_TFVARS=""
+    fi
+    if [ -f "$FLAT_TFVARS" ]; then
+        TFVARS_FILE="$FLAT_TFVARS"
+    elif [ -n "${FALLBACK_TFVARS:-}" ] && [ -f "$FALLBACK_TFVARS" ]; then
+        TFVARS_FILE="$FALLBACK_TFVARS"
+    else
+        TFVARS_FILE="$PROJECT_ROOT/config/environments/${ENV}/terraform.tfvars"
+    fi
 fi
 
 # 颜色输出

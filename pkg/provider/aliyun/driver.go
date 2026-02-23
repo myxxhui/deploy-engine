@@ -819,10 +819,18 @@ func (d *Driver) fetchKubeConfigWithOpts(ctx context.Context, skipLongWait bool)
 	if err != nil {
 		return nil, fmt.Errorf("get-kubeconfig.sh StderrPipe: %w", err)
 	}
+	// 传入 tfvars 路径，使从业务仓（如 diting-infra）调用时脚本能从 ConfigRoot 读取 instance_password
+	env := os.Environ()
+	if tfvars, _ := d.tfVarsFile(); tfvars != "" {
+		if _, err := os.Stat(tfvars); err == nil {
+			env = append(env, "TFVARS_FILE="+tfvars)
+		}
+	}
 	// 已有 ECS 时给 K3s 约 24s 窗口（12 次 × 2s），避免 3 次过短导致误报未就绪
 	if skipLongWait {
-		cmd.Env = append(os.Environ(), "KUBECONFIG_MAX_RETRIES=12", "KUBECONFIG_SLEEP_SEC=2")
+		env = append(env, "KUBECONFIG_MAX_RETRIES=12", "KUBECONFIG_SLEEP_SEC=2")
 	}
+	cmd.Env = env
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("get-kubeconfig.sh Start: %w", err)
 	}

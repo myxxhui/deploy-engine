@@ -16,7 +16,9 @@ spot_strategy     = "SpotAsPriceGo"
 spot_price_limit  = 0.5
 eip_bandwidth     = 100
 disk_category     = "cloud_essd"
-init_script_acl   = "public-read-write"
-nas_use_existing_access_group = false
-oss_bucket_name = "deploy-engine-k3s-storage"
+# init_script_acl   = "public-read-write"
+# NAS：同一阿里云账号下若已存在 Access Group（如在家/他机创建过），必须设为 true 并指定名称，否则换机或无 state 时报 InvalidAccessGroup.AlreadyExisted
+nas_use_existing_access_group = true
+nas_existing_access_group_name = "diting_nas_group_dev"
+oss_bucket_name               = "deploy-engine-k3s-storage"
 # ram_role_name     = "App-infra-manage"
