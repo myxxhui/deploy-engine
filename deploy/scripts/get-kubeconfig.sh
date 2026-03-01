@@ -322,6 +322,10 @@ if kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
         log "已备份原有配置到 ${DEFAULT_KUBECONFIG}.backup-$(date +%Y%m%d-%H%M%S)"
     fi
     
+    # 先重命名 config-diting-prod 中的 context/cluster/user 为目标名称
+    log "重命名 context 为: $CONTEXT_NAME"
+    kubectl config rename-context default "$CONTEXT_NAME" --kubeconfig="$CONFIG_OUT" 2>/dev/null || true
+    
     # 使用 kubectl config 合并配置
     KUBECONFIG="$DEFAULT_KUBECONFIG:$CONFIG_OUT" kubectl config view --flatten > "${DEFAULT_KUBECONFIG}.tmp"
     mv "${DEFAULT_KUBECONFIG}.tmp" "$DEFAULT_KUBECONFIG"
