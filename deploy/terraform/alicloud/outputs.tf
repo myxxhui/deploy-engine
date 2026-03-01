@@ -47,3 +47,9 @@ output "oss_region" {
   description = "OSS Bucket 地域"
   value       = module.oss.bucket_region
 }
+
+# Stage2-06 生产数据环境：独立数据盘 ID（Down 保留盘时写入 prod-data-env.disk_id，再次 Up 时 TF_VAR_use_existing_data_disk_id 传入）
+output "data_disk_id" {
+  description = "独立数据盘 ID（enable_prod_data_disk 时有效；Down 后保留供再次 Up 挂载）"
+  value       = local.data_disk_id
+}

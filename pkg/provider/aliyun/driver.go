@@ -20,6 +20,7 @@ import (
 
 	"github.com/titan-platform/deploy-engine/pkg/config"
 	"github.com/titan-platform/deploy-engine/pkg/provider"
+	"gopkg.in/yaml.v3"
 )
 
 // #region agent log
@@ -616,6 +617,18 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		}
 	}
 
+	// 根据 deploy_control 部署数据库（TimescaleDB、PostgreSQL L2、Redis）
+	configFilePath := ""
+	if merged != nil && merged.Env != nil {
+		configFilePath = merged.Env.ConfigFile
+	}
+	if configFilePath == "" {
+		configFilePath = filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
+	}
+	if err := d.deployDatabases(ctx, configFilePath, kubeConfig); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  数据库部署失败（K3s 已就绪，可手动部署）: %v\n", err)
+	}
+
 	return &provider.ClusterContext{
 		InstanceID:  instanceID,
 		PublicIP:    publicIP,
@@ -849,4 +862,151 @@ func (d *Driver) fetchKubeConfigWithOpts(ctx context.Context, skipLongWait bool)
 	}
 	wg.Wait()
 	return os.ReadFile(d.kubeconfigPath())
+}
+
+// deployDatabases 根据 deploy_control 配置部署数据库（TimescaleDB、PostgreSQL L2、Redis）
+func (d *Driver) deployDatabases(ctx context.Context, configFilePath string, kubeConfig []byte) error {
+	deployCtrl, err := config.LoadDeployControl(configFilePath)
+	if err != nil {
+		return fmt.Errorf("加载 deploy_control 失败: %w", err)
+	}
+	if deployCtrl == nil {
+		fmt.Fprintln(os.Stderr, "未找到 deploy_control 配置，跳过数据库部署")
+		return nil
+	}
+
+	fmt.Fprintln(os.Stderr, "=== 开始部署数据库组件 ===")
+	namespace := "default"
+
+	// 部署 TimescaleDB（L1）
+	if deployCtrl.EnableTimescaleDB {
+		fmt.Fprintln(os.Stderr, "正在部署 TimescaleDB (L1)...")
+		if err := d.deployTimescaleDB(ctx, kubeConfig, namespace, deployCtrl.TimescaleDBStorage); err != nil {
+			return fmt.Errorf("TimescaleDB 部署失败: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "✅ TimescaleDB 部署完成")
+	}
+
+	// 部署 PostgreSQL L2
+	if deployCtrl.EnablePostgresL2 {
+		fmt.Fprintln(os.Stderr, "正在部署 PostgreSQL L2...")
+		if err := d.deployPostgresL2(ctx, kubeConfig, namespace, deployCtrl.PostgresL2Storage); err != nil {
+			return fmt.Errorf("PostgreSQL L2 部署失败: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "✅ PostgreSQL L2 部署完成")
+	}
+
+	// 部署 Redis
+	if deployCtrl.EnableRedis {
+		fmt.Fprintln(os.Stderr, "正在部署 Redis...")
+		if err := d.deployRedis(ctx, kubeConfig, namespace, deployCtrl.RedisStorage); err != nil {
+			return fmt.Errorf("Redis 部署失败: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "✅ Redis 部署完成")
+	}
+
+	fmt.Fprintln(os.Stderr, "=== 数据库组件部署完成 ===")
+	return nil
+}
+
+// deployTimescaleDB 部署 TimescaleDB（使用 Bitnami PostgreSQL chart + TimescaleDB 扩展）
+func (d *Driver) deployTimescaleDB(ctx context.Context, kubeConfig []byte, namespace string, storage config.StorageConfig) error {
+	values := map[string]any{
+		"auth": map[string]any{
+			"username": "postgres",
+			"password": "postgres",
+			"database": "postgres",
+		},
+		"primary": map[string]any{
+			"persistence": map[string]any{
+				"enabled": true,
+				"size":    storage.Size,
+			},
+		},
+	}
+	if storage.StorageClass != "" {
+		values["primary"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = storage.StorageClass
+	}
+
+	return d.runHelmInstall(ctx, kubeConfig, "timescaledb", namespace, "bitnami/postgresql", values)
+}
+
+// deployPostgresL2 部署 PostgreSQL L2
+func (d *Driver) deployPostgresL2(ctx context.Context, kubeConfig []byte, namespace string, storage config.StorageConfig) error {
+	values := map[string]any{
+		"auth": map[string]any{
+			"username": "postgres",
+			"password": "postgres",
+			"database": "diting_l2",
+		},
+		"primary": map[string]any{
+			"persistence": map[string]any{
+				"enabled": true,
+				"size":    storage.Size,
+			},
+		},
+	}
+	if storage.StorageClass != "" {
+		values["primary"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = storage.StorageClass
+	}
+
+	return d.runHelmInstall(ctx, kubeConfig, "postgresql-l2", namespace, "bitnami/postgresql", values)
+}
+
+// deployRedis 部署 Redis
+func (d *Driver) deployRedis(ctx context.Context, kubeConfig []byte, namespace string, storage config.StorageConfig) error {
+	values := map[string]any{
+		"auth": map[string]any{
+			"enabled": false,
+		},
+		"master": map[string]any{
+			"persistence": map[string]any{
+				"enabled": true,
+				"size":    storage.Size,
+			},
+		},
+	}
+	if storage.StorageClass != "" {
+		values["master"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = storage.StorageClass
+	}
+
+	return d.runHelmInstall(ctx, kubeConfig, "redis", namespace, "bitnami/redis", values)
+}
+
+// runHelmInstall 执行 helm upgrade --install（封装 helm 包调用）
+func (d *Driver) runHelmInstall(ctx context.Context, kubeConfig []byte, releaseName, namespace, chartName string, values map[string]any) error {
+	tmpKube, err := os.CreateTemp("", "deploy-engine-kubeconfig-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpKube.Name())
+	if _, err := tmpKube.Write(kubeConfig); err != nil {
+		return err
+	}
+	if err := tmpKube.Close(); err != nil {
+		return err
+	}
+
+	tmpValues, err := os.CreateTemp("", "deploy-engine-values-*.yaml")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpValues.Name())
+	enc := yaml.NewEncoder(tmpValues)
+	if err := enc.Encode(values); err != nil {
+		return err
+	}
+	if err := tmpValues.Close(); err != nil {
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, "helm", "upgrade", "--install", releaseName, chartName,
+		"-n", namespace, "--create-namespace", "-f", tmpValues.Name())
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+tmpKube.Name())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("helm upgrade --install %s: %w", releaseName, err)
+	}
+	return nil
 }

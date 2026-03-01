@@ -204,3 +204,28 @@ variable "force_destroy_bucket" {
   type        = bool
   default     = true
 }
+
+# ---------- Stage2-06 生产数据环境：独立数据盘（Down 时保留，再次 Up 挂载同盘）----------
+variable "enable_prod_data_disk" {
+  description = "是否启用独立数据盘（与 ECS 分离；Down 仅回收 ECS/EIP 时保留此盘，再次 Up 可挂载同盘）"
+  type        = bool
+  default     = false
+}
+
+variable "use_existing_data_disk_id" {
+  description = "已有数据盘 ID（Down 后再次 Up 时传入，不再新建盘；由 prod-data-env.disk_id 或 TF_VAR 注入）"
+  type        = string
+  default     = ""
+}
+
+variable "data_disk_size" {
+  description = "独立数据盘大小（GB）；仅当 enable_prod_data_disk=true 且未传 use_existing_data_disk_id 时新建盘使用"
+  type        = number
+  default     = 100
+}
+
+variable "data_disk_category" {
+  description = "独立数据盘类型（需与实例规格兼容）"
+  type        = string
+  default     = "cloud_essd"
+}

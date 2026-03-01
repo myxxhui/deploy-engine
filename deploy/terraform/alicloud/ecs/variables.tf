@@ -100,3 +100,10 @@ variable "ram_role_name" {
   type        = string
   default     = ""
 }
+
+# Stage2-06 生产数据环境：独立数据盘 ID（非空时挂载到实例；Down 时仅销毁 attachment 与 ECS，盘在根级保留）
+variable "data_disk_id" {
+  description = "独立数据盘 ID（enable_prod_data_disk 时由根级传入；Down 保留盘时不销毁此盘）"
+  type        = string
+  default     = ""
+}

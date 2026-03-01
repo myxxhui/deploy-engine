@@ -98,6 +98,32 @@ module "oss" {
   init_script_acl      = var.init_script_acl
 }
 
+# ---------- Stage2-06 生产数据环境：独立数据盘（根级资源，Down 时 -target=module.ecs 不销毁此盘）----------
+data "alicloud_vswitches" "data_disk_zone" {
+  count = var.enable_prod_data_disk && var.use_existing_data_disk_id == "" ? 1 : 0
+  ids   = [module.vpc.vswitch_id]
+}
+
+resource "alicloud_disk" "prod_data" {
+  count = var.enable_prod_data_disk && var.use_existing_data_disk_id == "" ? 1 : 0
+
+  zone_id             = data.alicloud_vswitches.data_disk_zone[0].vswitches[0].zone_id
+  category            = var.data_disk_category
+  size                = var.data_disk_size
+  name                = "${local.project_name}-prod-data-disk-${var.env_id}"
+  description         = "Stage2-06 生产数据环境独立数据盘（Down 保留）"
+  delete_with_instance = false
+
+  tags = merge(local.common_tags, {
+    Name = "${local.project_name}-prod-data-disk-${var.env_id}"
+  })
+}
+
+locals {
+  # 数据盘 ID：已有则用已有，否则用新建盘；未启用则为空
+  data_disk_id = var.enable_prod_data_disk ? (var.use_existing_data_disk_id != "" ? var.use_existing_data_disk_id : try(alicloud_disk.prod_data[0].id, "")) : ""
+}
+
 module "ecs" {
   source = "./ecs"
 
@@ -117,6 +143,7 @@ module "ecs" {
   common_tags       = local.common_tags
   eip_bandwidth     = var.eip_bandwidth
   ram_role_name     = var.ram_role_name
+  data_disk_id      = local.data_disk_id
   user_data         = "${path.root}/../../bootstrap/scripts/user-data.sh"
   user_data_vars = {
     nas_mount_domain      = module.nas.nas_mount_domain

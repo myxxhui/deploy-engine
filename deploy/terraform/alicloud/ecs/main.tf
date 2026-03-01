@@ -125,3 +125,18 @@ resource "alicloud_eip_association" "on_demand" {
   instance_id   = alicloud_instance.on_demand[0].id
 }
 
+# Stage2-06：独立数据盘挂载（在 module.ecs 内以便 Down -target=module.ecs 时一并销毁挂载关系，根级 alicloud_disk 保留）
+resource "alicloud_disk_attachment" "spot" {
+  count = var.enable_spot && var.data_disk_id != "" ? 1 : 0
+
+  instance_id = alicloud_instance.spot[0].id
+  disk_id     = var.data_disk_id
+}
+
+resource "alicloud_disk_attachment" "on_demand" {
+  count = var.enable_spot ? 0 : (var.data_disk_id != "" ? 1 : 0)
+
+  instance_id = alicloud_instance.on_demand[0].id
+  disk_id     = var.data_disk_id
+}
+
