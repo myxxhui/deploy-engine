@@ -242,7 +242,7 @@ func (d *Driver) instancePasswordFromEnvOrFile(tfvarsPath string) (string, error
 
 // ensureOSSScriptUploaded 确保 OSS 初始化脚本已上传：先 plan 检查是否存在且无更新；不存在或本地有更新则上传，存在且无更新则跳过。
 func (d *Driver) ensureOSSScriptUploaded(ctx context.Context, tfDir, tfvars string, merged *config.LayerConfig, instancePassword string) error {
-	fmt.Fprintln(os.Stderr, "deploy-engine: 检查 OSS 初始化脚本（存在且无更新则跳过上传）...")
+	fmt.Fprintln(os.Stderr, "【步骤 1/5】检查 OSS 初始化脚本...")
 	// 切换桶时，避免 Terraform 尝试从旧桶 DeleteObject（旧桶可能已销毁导致 NoSuchBucket）
 	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script")
 	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script[0]")
@@ -287,17 +287,17 @@ func (d *Driver) ensureOSSScriptUploaded(ctx context.Context, tfDir, tfvars stri
 		return fmt.Errorf("terraform plan 检查 OSS 脚本失败: %w", planErr)
 	}
 	if !hasChanges {
-		fmt.Fprintln(os.Stderr, "deploy-engine: OSS 初始化脚本已存在且无更新，跳过上传")
+		fmt.Fprintln(os.Stderr, "  ✅ OSS 初始化脚本已存在且无更新，跳过上传")
 		return nil
 	}
 
 	// 存在变更：执行上传。 -refresh=false 与 plan 一致，避免对已存在桶 refresh 触发 NoSuchBucket
-	fmt.Fprintln(os.Stderr, "deploy-engine: OSS 初始化脚本不存在或本地有更新，正在上传...")
+	fmt.Fprintln(os.Stderr, "  正在上传 OSS 初始化脚本...")
 	applyArgs := append([]string{"apply", "-auto-approve", "-refresh=false", "-target=module.oss"}, baseArgs...)
 	if err := d.runTerraformApplyWithStderrLog(ctx, tfDir, applyArgs, env); err != nil {
 		return err
 	}
-	fmt.Fprintln(os.Stderr, "deploy-engine: OSS 初始化脚本已就绪")
+	fmt.Fprintln(os.Stderr, "  ✅ OSS 初始化脚本已就绪")
 	return nil
 }
 
@@ -404,16 +404,23 @@ func (d *Driver) kubeconfigPath() string {
 }
 
 func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provider.ClusterContext, error) {
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "  开始一键部署 K3s 集群")
+	fmt.Fprintf(os.Stderr, "  项目: %s, 环境: %s\n", d.Project, d.EnvID)
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "")
+	
 	tfDir := d.tfLiveDir()
 	tfvars, usedLegacy := d.tfVarsFile()
 	if _, err := os.Stat(tfDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("aliyun: terraform 目录不存在: %s（请设置 DEPLOY_ENGINE_ROOT 或在模块根目录执行）", tfDir)
+		return nil, fmt.Errorf("terraform 目录不存在: %s（请设置 DEPLOY_ENGINE_ROOT 或在模块根目录执行）", tfDir)
 	}
 	if _, err := os.Stat(tfvars); os.IsNotExist(err) {
-		return nil, fmt.Errorf("aliyun: tfvars 不存在: %s（请从 config/examples/terraform-<project>-<env>.tfvars.example 复制到 config/ 并填写，或见《配置说明》）", tfvars)
+		return nil, fmt.Errorf("tfvars 不存在: %s（请从 config/examples/terraform-<project>-<env>.tfvars.example 复制到 config/ 并填写）", tfvars)
 	}
 	if usedLegacy {
-		fmt.Fprintf(os.Stderr, "deploy-engine: [deprecation] 使用旧路径 %s，请迁移到扁平路径 %s，下一大版本将仅支持扁平路径。\n", tfvars, filepath.Join(d.configRoot(), config.FlatTfvarsName(d.Project, d.EnvID)))
+		fmt.Fprintf(os.Stderr, "⚠️  [弃用警告] 使用旧路径 %s，请迁移到扁平路径 %s\n", tfvars, filepath.Join(d.configRoot(), config.FlatTfvarsName(d.Project, d.EnvID)))
 	}
 
 	instancePassword, err := d.instancePasswordFromEnvOrFile(tfvars)
@@ -438,7 +445,8 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 	}
 
 	if skipApply {
-		fmt.Fprintln(os.Stderr, "deploy-engine: 检测到已有 ECS/K3s，跳过完整 Terraform apply；正在同步安全组规则（ssh_allowed_cidr/出口 IP）...")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "【步骤 2/5】检测到已有 ECS/K3s，同步安全组规则...")
 		tfVarsAbs, _ := filepath.Abs(tfvars)
 		mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
 		configFilePath := filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
@@ -487,8 +495,10 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 				fmt.Fprintf(os.Stderr, "deploy-engine: 安全组规则同步失败（可忽略后重试 kubeconfig）: %v\n", err)
 			}
 		}
-		fmt.Fprintln(os.Stderr, "deploy-engine: 继续获取 kubeconfig...")
+		fmt.Fprintln(os.Stderr, "  ✅ 安全组规则已同步")
 	} else {
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "【步骤 2/5】执行 Terraform Apply，创建云资源...")
 		tfVarsAbs, _ := filepath.Abs(tfvars)
 		applyArgs := []string{"apply", "-refresh=false", "-auto-approve"}
 
@@ -592,11 +602,8 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 	// #region agent log
 	agentLog("driver.go:Up:before-fetchKubeConfig", "calling fetchKubeConfig", "H3", nil)
 	// #endregion
-	if skipApply {
-		fmt.Fprintln(os.Stderr, "deploy-engine: 正在获取 kubeconfig（等待 K3s 就绪，最多约 5 分钟）...")
-	} else {
-		fmt.Fprintln(os.Stderr, "deploy-engine: Terraform 已完成，正在等待 K3s 就绪并获取 kubeconfig（可能需数分钟）...")
-	}
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "【步骤 3/5】等待 K3s 就绪并获取 kubeconfig...")
 	os.Stderr.Sync()
 	// 始终使用完整等待（60×5s），避免跳过 apply 时 24s 不足导致 K3s 未就绪
 	kubeConfig, kubeErr := d.fetchKubeConfigWithOpts(ctx, false)
@@ -629,6 +636,15 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		fmt.Fprintf(os.Stderr, "⚠️  数据库部署失败（K3s 已就绪，可手动部署）: %v\n", err)
 	}
 
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "【步骤 5/5】部署完成")
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "  ✅ K3s 集群部署完成")
+	fmt.Fprintf(os.Stderr, "  公网 IP: %s\n", publicIP)
+	fmt.Fprintf(os.Stderr, "  实例 ID: %s\n", instanceID)
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "")
+
 	return &provider.ClusterContext{
 		InstanceID:  instanceID,
 		PublicIP:    publicIP,
@@ -641,13 +657,26 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 }
 
 func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) error {
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "  开始回收 K3s 集群资源")
+	fmt.Fprintf(os.Stderr, "  项目: %s, 环境: %s\n", d.Project, d.EnvID)
+	fullDestroy := strings.ToLower(os.Getenv("FULL_DESTROY")) == "1" || strings.ToLower(os.Getenv("FULL_DESTROY")) == "true"
+	if fullDestroy {
+		fmt.Fprintln(os.Stderr, "  模式: 完整销毁（VPC/NAS/OSS/ECS）")
+	} else {
+		fmt.Fprintln(os.Stderr, "  模式: 仅销毁 ECS（保留 VPC/NAS/OSS）")
+	}
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "")
+	
 	tfDir := d.tfLiveDir()
 	tfvars, _ := d.tfVarsFile()
 	if _, err := os.Stat(tfDir); os.IsNotExist(err) {
-		return fmt.Errorf("aliyun: terraform 目录不存在: %s", tfDir)
+		return fmt.Errorf("terraform 目录不存在: %s", tfDir)
 	}
 	if _, err := os.Stat(tfvars); os.IsNotExist(err) {
-		return fmt.Errorf("aliyun: tfvars 不存在: %s（无法执行 destroy）", tfvars)
+		return fmt.Errorf("tfvars 不存在: %s（无法执行 destroy）", tfvars)
 	}
 	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script")
 	tfVarsAbs, _ := filepath.Abs(tfvars)
@@ -669,11 +698,11 @@ func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) 
 	if p := d.projectTfvarsPath(); p != "" {
 		destroyArgs = append(destroyArgs, "-var-file="+p)
 	}
-	fullDestroy := strings.ToLower(os.Getenv("FULL_DESTROY")) == "1" || strings.ToLower(os.Getenv("FULL_DESTROY")) == "true"
 	if !fullDestroy {
 		destroyArgs = append(destroyArgs, "-target=module.ecs")
+		fmt.Fprintln(os.Stderr, "正在销毁 ECS 实例（保留 VPC/NAS/OSS）...")
 	} else {
-		fmt.Fprintln(os.Stderr, "deploy-engine: FULL_DESTROY=1，完整销毁（VPC/NAS/OSS/ECS 等），下次 deploy 将按 tfvars 的 region 重新创建")
+		fmt.Fprintln(os.Stderr, "正在完整销毁所有资源（VPC/NAS/OSS/ECS）...")
 	}
 	destroyArgs = append(destroyArgs, "-var-file="+tfVarsAbs, "-var=env_id="+envID, "-var=project="+project, "-var=config_file="+configFileAbs)
 	// destroy 必须使用 state 中资源的实际 region，且强制子进程 ALICLOUD_REGION，否则 OSS/ECS 等会请求错误地域导致 403（如 GetBucketCORS）
@@ -683,17 +712,28 @@ func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) 
 	}
 	if destroyRegion != "" {
 		destroyArgs = append(destroyArgs, "-var=region="+destroyRegion)
+		fmt.Fprintf(os.Stderr, "使用地域: %s\n", destroyRegion)
 	}
 	destroyArgs = append(destroyArgs, "-auto-approve")
 	destroyEnv := map[string]string{}
 	if destroyRegion != "" {
 		destroyEnv["ALICLOUD_REGION"] = destroyRegion
 	}
+	
+	fmt.Fprintln(os.Stderr, "")
 	err := d.runTerraform(ctx, tfDir, destroyArgs, destroyEnv)
 	if err != nil {
-		return fmt.Errorf("aliyun: terraform destroy: %w", err)
+		return fmt.Errorf("terraform destroy 失败: %w", err)
 	}
+	
 	_ = os.Remove(d.kubeconfigPath())
+	
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "  ✅ 资源回收完成")
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "")
+	
 	return nil
 }
 
@@ -875,37 +915,57 @@ func (d *Driver) deployDatabases(ctx context.Context, configFilePath string, kub
 		return nil
 	}
 
-	fmt.Fprintln(os.Stderr, "=== 开始部署数据库组件 ===")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "【步骤 4/5】部署数据库组件")
+	fmt.Fprintln(os.Stderr, "========================================")
 	namespace := "default"
 
-	// 部署 TimescaleDB（L1）
+	// 1. 先安装存储插件并创建 StorageClass
+	if deployCtrl.K3sStoragePlugin != "" {
+		fmt.Fprintf(os.Stderr, "  [4.1] 正在安装 K3s 存储插件: %s...\n", deployCtrl.K3sStoragePlugin)
+		if err := d.installStoragePlugin(ctx, kubeConfig, deployCtrl.K3sStoragePlugin); err != nil {
+			return fmt.Errorf("存储插件安装失败: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "  ✅ 存储插件安装完成")
+		
+		// 等待 StorageClass 就绪
+		fmt.Fprintln(os.Stderr, "  等待 StorageClass 就绪...")
+		time.Sleep(5 * time.Second)
+		if err := d.verifyStorageClass(ctx, kubeConfig, deployCtrl.K3sStoragePlugin); err != nil {
+			return fmt.Errorf("StorageClass 验证失败: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "  ✅ StorageClass 已就绪")
+	}
+
+	// 2. 部署 TimescaleDB（L1）
 	if deployCtrl.EnableTimescaleDB {
-		fmt.Fprintln(os.Stderr, "正在部署 TimescaleDB (L1)...")
+		fmt.Fprintln(os.Stderr, "  [4.2] 正在部署 TimescaleDB (L1)...")
 		if err := d.deployTimescaleDB(ctx, kubeConfig, namespace, deployCtrl.TimescaleDBStorage); err != nil {
 			return fmt.Errorf("TimescaleDB 部署失败: %w", err)
 		}
-		fmt.Fprintln(os.Stderr, "✅ TimescaleDB 部署完成")
+		fmt.Fprintln(os.Stderr, "  ✅ TimescaleDB 部署完成")
 	}
 
 	// 部署 PostgreSQL L2
 	if deployCtrl.EnablePostgresL2 {
-		fmt.Fprintln(os.Stderr, "正在部署 PostgreSQL L2...")
+		fmt.Fprintln(os.Stderr, "  [4.3] 正在部署 PostgreSQL L2...")
 		if err := d.deployPostgresL2(ctx, kubeConfig, namespace, deployCtrl.PostgresL2Storage); err != nil {
 			return fmt.Errorf("PostgreSQL L2 部署失败: %w", err)
 		}
-		fmt.Fprintln(os.Stderr, "✅ PostgreSQL L2 部署完成")
+		fmt.Fprintln(os.Stderr, "  ✅ PostgreSQL L2 部署完成")
 	}
 
 	// 部署 Redis
 	if deployCtrl.EnableRedis {
-		fmt.Fprintln(os.Stderr, "正在部署 Redis...")
+		fmt.Fprintln(os.Stderr, "  [4.4] 正在部署 Redis...")
 		if err := d.deployRedis(ctx, kubeConfig, namespace, deployCtrl.RedisStorage); err != nil {
 			return fmt.Errorf("Redis 部署失败: %w", err)
 		}
-		fmt.Fprintln(os.Stderr, "✅ Redis 部署完成")
+		fmt.Fprintln(os.Stderr, "  ✅ Redis 部署完成")
 	}
 
-	fmt.Fprintln(os.Stderr, "=== 数据库组件部署完成 ===")
+	fmt.Fprintln(os.Stderr, "========================================")
+	fmt.Fprintln(os.Stderr, "✅ 数据库组件部署完成")
 	return nil
 }
 
@@ -924,9 +984,12 @@ func (d *Driver) deployTimescaleDB(ctx context.Context, kubeConfig []byte, names
 			},
 		},
 	}
-	if storage.StorageClass != "" {
-		values["primary"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = storage.StorageClass
+	// 如果未指定 StorageClass，使用 local-path（K3s 默认）
+	scName := storage.StorageClass
+	if scName == "" {
+		scName = "local-path"
 	}
+	values["primary"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = scName
 
 	return d.runHelmInstall(ctx, kubeConfig, "timescaledb", namespace, "bitnami/postgresql", values)
 }
@@ -946,9 +1009,12 @@ func (d *Driver) deployPostgresL2(ctx context.Context, kubeConfig []byte, namesp
 			},
 		},
 	}
-	if storage.StorageClass != "" {
-		values["primary"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = storage.StorageClass
+	// 如果未指定 StorageClass，使用 local-path（K3s 默认）
+	scName := storage.StorageClass
+	if scName == "" {
+		scName = "local-path"
 	}
+	values["primary"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = scName
 
 	return d.runHelmInstall(ctx, kubeConfig, "postgresql-l2", namespace, "bitnami/postgresql", values)
 }
@@ -966,9 +1032,12 @@ func (d *Driver) deployRedis(ctx context.Context, kubeConfig []byte, namespace s
 			},
 		},
 	}
-	if storage.StorageClass != "" {
-		values["master"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = storage.StorageClass
+	// 如果未指定 StorageClass，使用 local-path（K3s 默认）
+	scName := storage.StorageClass
+	if scName == "" {
+		scName = "local-path"
 	}
+	values["master"].(map[string]any)["persistence"].(map[string]any)["storageClass"] = scName
 
 	return d.runHelmInstall(ctx, kubeConfig, "redis", namespace, "bitnami/redis", values)
 }
@@ -1007,6 +1076,115 @@ func (d *Driver) runHelmInstall(ctx context.Context, kubeConfig []byte, releaseN
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("helm upgrade --install %s: %w", releaseName, err)
+	}
+	return nil
+}
+
+// installStoragePlugin 安装 K3s 存储插件（local-path 默认已安装，其他插件需要部署）
+func (d *Driver) installStoragePlugin(ctx context.Context, kubeConfig []byte, plugin string) error {
+	switch plugin {
+	case "local-path":
+		// K3s 默认已安装 local-path-provisioner，检查是否存在
+		if err := d.verifyStorageClass(ctx, kubeConfig, "local-path"); err != nil {
+			fmt.Fprintln(os.Stderr, "⚠️  local-path StorageClass 不存在，尝试重新部署...")
+			return d.deployLocalPathProvisioner(ctx, kubeConfig)
+		}
+		fmt.Fprintln(os.Stderr, "local-path 存储插件已存在")
+		return nil
+	case "nfs-client":
+		return d.deployNFSClientProvisioner(ctx, kubeConfig)
+	default:
+		return fmt.Errorf("不支持的存储插件: %s（支持: local-path, nfs-client）", plugin)
+	}
+}
+
+// deployLocalPathProvisioner 部署 local-path-provisioner
+func (d *Driver) deployLocalPathProvisioner(ctx context.Context, kubeConfig []byte) error {
+	// K3s 默认使用 Rancher local-path-provisioner
+	manifest := `https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml`
+	
+	tmpKube, err := os.CreateTemp("", "deploy-engine-kubeconfig-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpKube.Name())
+	if _, err := tmpKube.Write(kubeConfig); err != nil {
+		return err
+	}
+	if err := tmpKube.Close(); err != nil {
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", manifest)
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+tmpKube.Name())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("kubectl apply local-path-provisioner: %w", err)
+	}
+	return nil
+}
+
+// deployNFSClientProvisioner 部署 NFS client provisioner
+func (d *Driver) deployNFSClientProvisioner(ctx context.Context, kubeConfig []byte) error {
+	// 使用 Helm chart 部署 nfs-subdir-external-provisioner
+	values := map[string]any{
+		"nfs": map[string]any{
+			"server": "NFS_SERVER_IP",  // 需要从配置读取
+			"path":   "/mnt/titan-data",
+		},
+		"storageClass": map[string]any{
+			"name":              "nfs-client",
+			"defaultClass":      false,
+			"reclaimPolicy":     "Retain",
+			"archiveOnDelete":   true,
+		},
+	}
+	
+	// 先添加 Helm repo
+	tmpKube, err := os.CreateTemp("", "deploy-engine-kubeconfig-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpKube.Name())
+	if _, err := tmpKube.Write(kubeConfig); err != nil {
+		return err
+	}
+	if err := tmpKube.Close(); err != nil {
+		return err
+	}
+
+	repoAddCmd := exec.CommandContext(ctx, "helm", "repo", "add", "nfs-subdir-external-provisioner",
+		"https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/")
+	repoAddCmd.Env = append(os.Environ(), "KUBECONFIG="+tmpKube.Name())
+	repoAddCmd.Stdout = os.Stdout
+	repoAddCmd.Stderr = os.Stderr
+	if err := repoAddCmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  helm repo add 失败（可能已存在）: %v\n", err)
+	}
+
+	return d.runHelmInstall(ctx, kubeConfig, "nfs-subdir-external-provisioner", "kube-system",
+		"nfs-subdir-external-provisioner/nfs-subdir-external-provisioner", values)
+}
+
+// verifyStorageClass 验证 StorageClass 是否存在
+func (d *Driver) verifyStorageClass(ctx context.Context, kubeConfig []byte, scName string) error {
+	tmpKube, err := os.CreateTemp("", "deploy-engine-kubeconfig-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpKube.Name())
+	if _, err := tmpKube.Write(kubeConfig); err != nil {
+		return err
+	}
+	if err := tmpKube.Close(); err != nil {
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "storageclass", scName)
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+tmpKube.Name())
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("StorageClass %s 不存在: %w", scName, err)
 	}
 	return nil
 }

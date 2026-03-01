@@ -306,10 +306,41 @@ export KUBECONFIG="$CONFIG_OUT"
 if kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
     log "✅ Kubeconfig 验证成功"
     log "配置文件: $CONFIG_OUT"
+    
+    # 9. 自动更新本地默认 kubeconfig（~/.kube/config）
+    DEFAULT_KUBECONFIG="$KUBE_DIR/config"
+    CONTEXT_NAME="$PROJECT-$ENV"
+    if [ -z "$PROJECT" ]; then
+        CONTEXT_NAME="$ENV"
+    fi
+    
+    log "正在更新本地默认 kubeconfig..."
+    
+    # 备份原有配置
+    if [ -f "$DEFAULT_KUBECONFIG" ]; then
+        cp "$DEFAULT_KUBECONFIG" "${DEFAULT_KUBECONFIG}.backup-$(date +%Y%m%d-%H%M%S)"
+        log "已备份原有配置到 ${DEFAULT_KUBECONFIG}.backup-$(date +%Y%m%d-%H%M%S)"
+    fi
+    
+    # 使用 kubectl config 合并配置
+    KUBECONFIG="$DEFAULT_KUBECONFIG:$CONFIG_OUT" kubectl config view --flatten > "${DEFAULT_KUBECONFIG}.tmp"
+    mv "${DEFAULT_KUBECONFIG}.tmp" "$DEFAULT_KUBECONFIG"
+    chmod 600 "$DEFAULT_KUBECONFIG"
+    
+    # 切换到新的 context
+    kubectl config use-context "$CONTEXT_NAME" --kubeconfig="$DEFAULT_KUBECONFIG" >/dev/null 2>&1 || {
+        warning "无法自动切换 context，请手动执行: kubectl config use-context $CONTEXT_NAME"
+    }
+    
+    log "✅ 已自动更新本地 kubeconfig 并切换到 context: $CONTEXT_NAME"
     echo ""
-    echo "使用方法："
-    echo "   export KUBECONFIG=$CONFIG_OUT"
+    echo "当前 context: $CONTEXT_NAME"
+    echo "直接使用 kubectl 命令即可，无需设置 KUBECONFIG 环境变量"
+    echo ""
+    echo "其他可用命令："
     echo "   kubectl get nodes"
+    echo "   kubectl config get-contexts  # 查看所有 context"
+    echo "   kubectl config use-context <name>  # 切换 context"
 else
     warning "Kubeconfig 连接验证失败，但文件已保存"
 fi
