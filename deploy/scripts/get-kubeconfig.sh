@@ -310,23 +310,21 @@ if kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
     # 9. 设置 KUBECONFIG 环境变量指向新文件（不合并）
     log "正在配置 KUBECONFIG 环境变量..."
     
-    # 添加到 shell 配置文件
+    # 添加到 shell 配置文件（bash/zsh 均支持；文件不存在则创建，保证新开终端默认可用）
     KUBECONFIG_EXPORT="export KUBECONFIG=\"$CONFIG_OUT\""
     
     for RC_FILE in ~/.bashrc ~/.zshrc ~/.profile; do
-        if [ -f "$RC_FILE" ]; then
-            # 移除旧的 KUBECONFIG 设置
-            sed -i.bak '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || \
-                sed -i '' '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || true
-            # 添加新的设置
-            if ! grep -q "export KUBECONFIG=\"$CONFIG_OUT\"" "$RC_FILE" 2>/dev/null; then
-                echo "$KUBECONFIG_EXPORT" >> "$RC_FILE"
-                log "已添加到 $RC_FILE"
-            fi
+        [ -f "$RC_FILE" ] || touch "$RC_FILE"
+        # 移除旧的 KUBECONFIG 设置
+        sed -i.bak '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || \
+            sed -i '' '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || true
+        if ! grep -q "export KUBECONFIG=\"$CONFIG_OUT\"" "$RC_FILE" 2>/dev/null; then
+            echo "$KUBECONFIG_EXPORT" >> "$RC_FILE"
+            log "已添加到 $RC_FILE"
         fi
     done
     
-    log "✅ KUBECONFIG 已配置为: $CONFIG_OUT"
+    log "✅ KUBECONFIG 已配置为: $CONFIG_OUT（已写入 .bashrc / .zshrc / .profile，新开终端默认生效）"
     echo ""
     echo "使用方法："
     echo "   1. 当前终端立即生效："
