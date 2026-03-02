@@ -13,9 +13,9 @@ K3S_STORAGE_PATH="/var/lib/rancher/k3s/storage"
 ACR_SERVER="${acr_server}"
 ACR_NAMESPACE="${acr_namespace}"
 
-# 日志函数（统一日志路径，中文输出）
+# 日志函数（统一日志路径，中文输出；用反引号避免 $$ 被误解析为 PID）
 log() {
-  echo "[$$(date +'%Y-%m-%d %H:%M:%S')] $${*}" | tee -a /var/log/k3s-init.log
+  echo "[`date +'%Y-%m-%d %H:%M:%S'`] $${*}" | tee -a /var/log/k3s-init.log
 }
 
 log "=== K3s 集群初始化开始 ==="
