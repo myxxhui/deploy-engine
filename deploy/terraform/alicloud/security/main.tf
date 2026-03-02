@@ -28,12 +28,12 @@ locals {
   security_group_id = var.use_existing_security_group ? var.existing_security_group_id : alicloud_security_group.main[0].id
 }
 
-# 安全组规则（仅当创建新安全组时创建规则，复用时不创建）
+# 安全组规则：SSH 与 K8s API 在复用安全组时也创建/更新，便于 get-kubeconfig 与 SSH 可用
 # 注意：VPC 中的安全组规则必须使用 nic_type = "intranet"
 # 即使通过 EIP 公网访问，流量也会通过 EIP 转发到内网，源 IP 保持为访问者的公网 IP
 # SSH 规则：允许从当前 IP 访问（通过 EIP 转发，nic_type 必须是 "intranet"）
 resource "alicloud_security_group_rule" "ssh" {
-  count             = var.use_existing_security_group ? 0 : 1
+  count             = 1
   type              = "ingress"
   ip_protocol       = "tcp"
   nic_type          = "intranet" # VPC 中的安全组必须使用 intranet
