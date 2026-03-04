@@ -33,9 +33,9 @@ locals {
   access_group_name = var.use_existing_access_group ? var.existing_access_group_name : alicloud_nas_access_group.main[0].access_group_name
 }
 
-# NAS Access Rule（仅在用户显式 use_existing_access_group 时跳过；自动复用已有组时仍需创建规则）
+# NAS Access Rule：复用已有访问组时也创建，确保 VPC 网段始终有权限挂载，避免「mount system call failed」
 resource "alicloud_nas_access_rule" "vpc" {
-  count = var.use_existing_access_group ? 0 : 1
+  count = 1
 
   access_group_name = local.access_group_name
   source_cidr_ip    = var.vpc_cidr
