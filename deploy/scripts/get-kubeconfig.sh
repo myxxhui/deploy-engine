@@ -136,9 +136,9 @@ run_ssh() {
     SSHPASS="$PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 root@"$IP" "$@"
 }
 
-# 等待 ECS SSH 就绪（Terraform 创建 ECS 后首次执行时 sshd 可能尚未启动，避免首次 OSS 下载因 SSH 未就绪而失败）
+# 等待 ECS SSH 就绪（Terraform 创建 ECS 后首次执行时 sshd 可能尚未启动；cloud-init 可能需 5+ 分钟）
 wait_for_ssh() {
-    local max_attempts="${SSH_WAIT_MAX_ATTEMPTS:-30}"
+    local max_attempts="${SSH_WAIT_MAX_ATTEMPTS:-60}"
     local sleep_sec="${SSH_WAIT_SLEEP_SEC:-5}"
     local attempt=1
     while [ "$attempt" -le "$max_attempts" ]; do

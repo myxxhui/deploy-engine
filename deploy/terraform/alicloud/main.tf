@@ -117,7 +117,7 @@ resource "alicloud_disk" "prod_data" {
   zone_id             = data.alicloud_vswitches.data_disk_zone[0].vswitches[0].zone_id
   category            = var.data_disk_category
   size                = var.data_disk_size
-  name                = "${local.project_name}-prod-data-disk-${var.env_id}"
+  disk_name           = "${local.project_name}-prod-data-disk-${var.env_id}"
   description         = "Stage2-06 生产数据环境独立数据盘（Down 保留）"
   delete_with_instance = false
 

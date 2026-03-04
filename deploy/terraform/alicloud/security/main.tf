@@ -59,8 +59,9 @@ resource "alicloud_security_group_rule" "k8s_api" {
   description       = "K8s API (via EIP); source from ssh_allowed_cidr or apply-time IP"
 }
 
+# 复用安全组时也创建，避免 Terraform 销毁后 SG 无出站/VPC 规则导致 ECS 无法上网、cloud-init 无法完成、SSH 永不就绪
 resource "alicloud_security_group_rule" "vpc_internal" {
-  count             = var.use_existing_security_group ? 0 : 1
+  count             = 1
   type              = "ingress"
   ip_protocol       = "all"
   nic_type          = "intranet"
@@ -73,7 +74,7 @@ resource "alicloud_security_group_rule" "vpc_internal" {
 }
 
 resource "alicloud_security_group_rule" "egress_all" {
-  count             = var.use_existing_security_group ? 0 : 1
+  count             = 1
   type              = "egress"
   ip_protocol       = "all"
   nic_type          = "intranet"
