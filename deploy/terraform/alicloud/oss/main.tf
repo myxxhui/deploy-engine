@@ -77,14 +77,15 @@ resource "alicloud_oss_bucket_object" "init_script" {
   bucket = local.bucket_name
   key    = "scripts/k3s-init.sh"
 
+  # 模板渲染后变量名为 OSS_BUCKET_NAME、OSS_ENDPOINT（与 k3s-init-full.sh 一致）
   content = replace(
     replace(
       var.init_script_content,
-      "oss_bucket_name=\"\"",
-      "oss_bucket_name=\"${local.bucket_name}\""
+      "OSS_BUCKET_NAME=\"\"",
+      "OSS_BUCKET_NAME=\"${local.bucket_name}\""
     ),
-    "oss_endpoint=\"\"",
-    "oss_endpoint=\"${local.bucket_name}.oss-${var.region}.aliyuncs.com\""
+    "OSS_ENDPOINT=\"\"",
+    "OSS_ENDPOINT=\"${local.bucket_name}.oss-${var.region}.aliyuncs.com\""
   )
 
   content_type = "text/x-shellscript"
