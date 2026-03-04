@@ -26,6 +26,13 @@ locals {
     Environment = try(local.raw_config.global.environment, local.raw_config.environment, var.env_id)
     ManagedBy   = "Terraform"
   }
+
+  # 有 existing_* ID 即复用，无需再设 use_existing_* = true；兼容旧用法
+  use_existing_vpc     = var.vpc_use_existing || var.vpc_existing_id != ""
+  use_existing_vswitch = var.vswitch_use_existing || var.vswitch_existing_id != ""
+  use_existing_sg      = var.security_group_use_existing || var.security_group_existing_id != ""
+  use_existing_nas_fs  = var.nas_use_existing_file_system || var.nas_existing_file_system_id != ""
+  use_existing_nas_ag  = var.nas_use_existing_access_group || var.nas_existing_access_group_name != ""
 }
 
 module "vpc" {
@@ -36,10 +43,10 @@ module "vpc" {
   instance_type        = var.instance_type
   vpc_cidr             = var.vpc_cidr
   vswitch_cidr         = var.vswitch_cidr
-  use_existing_vpc     = var.vpc_use_existing
+  use_existing_vpc     = local.use_existing_vpc
   existing_vpc_id      = var.vpc_existing_id
-  existing_vpc_cidr    = var.vpc_existing_cidr
-  use_existing_vswitch = var.vswitch_use_existing
+  existing_vpc_cidr    = local.use_existing_vpc && var.vpc_existing_cidr != "" ? var.vpc_existing_cidr : var.vpc_cidr
+  use_existing_vswitch = local.use_existing_vswitch
   existing_vswitch_id  = var.vswitch_existing_id
 }
 
@@ -50,7 +57,7 @@ module "security" {
   env_id                      = var.env_id
   vpc_id                      = module.vpc.vpc_id
   vpc_cidr                    = module.vpc.vpc_cidr
-  use_existing_security_group = var.security_group_use_existing
+  use_existing_security_group = local.use_existing_sg
   existing_security_group_id  = var.security_group_existing_id
   ssh_allowed_cidr            = var.ssh_allowed_cidr
 }
@@ -62,9 +69,9 @@ module "nas" {
   env_id                     = var.env_id
   vpc_cidr                   = module.vpc.vpc_cidr
   vswitch_id                 = module.vpc.vswitch_id
-  use_existing_file_system   = var.nas_use_existing_file_system
-  existing_file_system_id    = var.nas_existing_file_system_id
-  use_existing_access_group  = var.nas_use_existing_access_group
+  use_existing_file_system   = local.use_existing_nas_fs
+  existing_file_system_id   = var.nas_existing_file_system_id
+  use_existing_access_group  = local.use_existing_nas_ag
   existing_access_group_name = var.nas_existing_access_group_name
 }
 
