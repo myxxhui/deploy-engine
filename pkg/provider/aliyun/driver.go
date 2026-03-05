@@ -220,6 +220,23 @@ func sshAllowedCidrFromTfvars(tfvarsPath string) string {
 	return ""
 }
 
+// useExistingSecurityGroupFromTfvars 从 tfvars 解析是否使用已有安全组（security_group_existing_id 非空）。复用已有安全组时 Terraform 不创建 SSH/6443 规则，由控制台管理，故不执行安全组同步。
+func useExistingSecurityGroupFromTfvars(tfvarsPath string) bool {
+	f, err := os.Open(tfvarsPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	re := regexp.MustCompile(`^\s*security_group_existing_id\s*=\s*"([^"]+)"\s*$`)
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if m := re.FindStringSubmatch(sc.Text()); len(m) == 2 && strings.TrimSpace(m[1]) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // instancePasswordFromEnvOrFile 优先从环境变量 TF_VAR_instance_password 读取，否则从 tfvars 文件中解析。
 func (d *Driver) instancePasswordFromEnvOrFile(tfvarsPath string) (string, error) {
 	if p := os.Getenv("TF_VAR_instance_password"); p != "" {
@@ -446,56 +463,58 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 
 	if skipApply {
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "【步骤 2/5】检测到已有 ECS/K3s，同步安全组规则...")
-		tfVarsAbs, _ := filepath.Abs(tfvars)
-		mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
-		configFilePath := filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
-		if configFilePath != "" {
-			mergedVars.ConfigFile = configFilePath
-		}
-		tmpFile, err := os.CreateTemp("", "deploy-engine-*.tfvars")
-		if err == nil {
-			tmpPath := tmpFile.Name()
-			defer os.Remove(tmpPath)
-			_ = config.WriteAliyunTerraformVarsToFile(mergedVars, tmpPath)
-			regionVal := regionFromTfvars(tfvars)
-			if regionVal == "" {
-				regionVal = mergedVars.Region
+		if useExistingSecurityGroupFromTfvars(tfvars) {
+			fmt.Fprintln(os.Stderr, "【步骤 2/5】使用已有安全组，跳过 Terraform 安全组规则同步（由控制台管理）")
+		} else {
+			fmt.Fprintln(os.Stderr, "【步骤 2/5】检测到已有 ECS/K3s，同步安全组规则...")
+			tfVarsAbs, _ := filepath.Abs(tfvars)
+			mergedVars := config.ToAliyunTerraformVars(merged, d.EnvID, instancePassword, d.Project)
+			configFilePath := filepath.Join(d.configRoot(), config.DeriveConfigFile(d.Project, d.EnvID))
+			if configFilePath != "" {
+				mergedVars.ConfigFile = configFilePath
 			}
-			// 强制 replace 两条规则，确保云上规则与 tfvars 的 ssh_allowed_cidr 一致（cidr_ip 为 ForceNew，仅 replace 会真正更新云上规则）
-			cidrVal := sshAllowedCidrFromTfvars(tfvars)
-			if cidrVal == "" {
-				cidrVal = "0.0.0.0/0"
-			}
-			sgArgs := []string{"apply", "-auto-approve",
-				"-target=module.security.alicloud_security_group_rule.ssh[0]",
-				"-target=module.security.alicloud_security_group_rule.k8s_api[0]",
-				"-replace=module.security.alicloud_security_group_rule.ssh[0]",
-				"-replace=module.security.alicloud_security_group_rule.k8s_api[0]",
-				"-var-file=" + tmpPath, "-var-file=" + tfVarsAbs, "-var=env_id=" + d.EnvID,
-				"-var=ssh_allowed_cidr=" + cidrVal}
-			fmt.Fprintf(os.Stderr, "deploy-engine: 安全组同步强制 replace 规则，ssh_allowed_cidr=%s\n", cidrVal)
-			if regionVal != "" {
-				sgArgs = append(sgArgs, "-var=region="+regionVal)
-			}
-			applyEnv := map[string]string{}
-			if regionVal != "" {
-				applyEnv["ALICLOUD_REGION"] = regionVal
-			}
-			if p := d.projectTfvarsPath(); p != "" {
-				if _, err := os.Stat(p); err == nil {
-					// 在 -var-file=tfVarsAbs 前插入 project tfvars（sgArgs 前 7 项含 apply/-target/-replace/-var-file=tmpPath）
-					newArgs := append([]string{}, sgArgs[:7]...)
-					newArgs = append(newArgs, "-var-file="+p)
-					newArgs = append(newArgs, sgArgs[7:]...)
-					sgArgs = newArgs
+			tmpFile, err := os.CreateTemp("", "deploy-engine-*.tfvars")
+			if err == nil {
+				tmpPath := tmpFile.Name()
+				defer os.Remove(tmpPath)
+				_ = config.WriteAliyunTerraformVarsToFile(mergedVars, tmpPath)
+				regionVal := regionFromTfvars(tfvars)
+				if regionVal == "" {
+					regionVal = mergedVars.Region
+				}
+				cidrVal := sshAllowedCidrFromTfvars(tfvars)
+				if cidrVal == "" {
+					cidrVal = "0.0.0.0/0"
+				}
+				sgArgs := []string{"apply", "-auto-approve",
+					"-target=module.security.alicloud_security_group_rule.ssh[0]",
+					"-target=module.security.alicloud_security_group_rule.k8s_api[0]",
+					"-replace=module.security.alicloud_security_group_rule.ssh[0]",
+					"-replace=module.security.alicloud_security_group_rule.k8s_api[0]",
+					"-var-file=" + tmpPath, "-var-file=" + tfVarsAbs, "-var=env_id=" + d.EnvID,
+					"-var=ssh_allowed_cidr=" + cidrVal}
+				fmt.Fprintf(os.Stderr, "deploy-engine: 安全组同步强制 replace 规则，ssh_allowed_cidr=%s\n", cidrVal)
+				if regionVal != "" {
+					sgArgs = append(sgArgs, "-var=region="+regionVal)
+				}
+				applyEnv := map[string]string{}
+				if regionVal != "" {
+					applyEnv["ALICLOUD_REGION"] = regionVal
+				}
+				if p := d.projectTfvarsPath(); p != "" {
+					if _, err := os.Stat(p); err == nil {
+						newArgs := append([]string{}, sgArgs[:7]...)
+						newArgs = append(newArgs, "-var-file="+p)
+						newArgs = append(newArgs, sgArgs[7:]...)
+						sgArgs = newArgs
+					}
+				}
+				if err := d.runTerraform(ctx, tfDir, sgArgs, applyEnv); err != nil {
+					fmt.Fprintf(os.Stderr, "deploy-engine: 安全组规则同步失败（可忽略后重试 kubeconfig）: %v\n", err)
 				}
 			}
-			if err := d.runTerraform(ctx, tfDir, sgArgs, applyEnv); err != nil {
-				fmt.Fprintf(os.Stderr, "deploy-engine: 安全组规则同步失败（可忽略后重试 kubeconfig）: %v\n", err)
-			}
+			fmt.Fprintln(os.Stderr, "  ✅ 安全组规则已同步")
 		}
-		fmt.Fprintln(os.Stderr, "  ✅ 安全组规则已同步")
 	} else {
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "【步骤 2/5】执行 Terraform Apply，创建云资源...")

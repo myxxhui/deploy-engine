@@ -1,19 +1,7 @@
 # ==============================================================================
 # Security 模块：安全组和规则
 # ==============================================================================
-
-data "http" "current_ip" {
-  url = "https://api.ipify.org"
-  request_headers = {
-    Accept = "text/plain"
-  }
-}
-
-locals {
-  current_ip = chomp(data.http.current_ip.response_body)
-  # 若指定了 ssh_allowed_cidr 则用其，否则用 apply 时检测的出口 IP/32
-  ssh_cidr   = var.ssh_allowed_cidr != "" ? var.ssh_allowed_cidr : "${local.current_ip}/32"
-}
+# 复用已有安全组（use_existing_security_group=true）时，不创建 SSH/6443 规则，由控制台统一管理，避免 Terraform 与控制台冲突或 NicType 导致 EIP 访问不通。
 
 # 创建新的安全组（当 use_existing_security_group=false 时）
 resource "alicloud_security_group" "main" {
@@ -28,15 +16,25 @@ locals {
   security_group_id = var.use_existing_security_group ? var.existing_security_group_id : alicloud_security_group.main[0].id
 }
 
-# 安全组规则：SSH 与 K8s API 在复用安全组时也创建/更新，便于 get-kubeconfig 与 SSH 可用
-# 注意：VPC 中的安全组规则必须使用 nic_type = "intranet"
-# 即使通过 EIP 公网访问，流量也会通过 EIP 转发到内网，源 IP 保持为访问者的公网 IP
-# SSH 规则：允许从当前 IP 访问（通过 EIP 转发，nic_type 必须是 "intranet"）
+# 仅在新创建安全组时添加 SSH/6443 规则；复用已有安全组时不创建，由控制台全放通或自行配置
+data "http" "current_ip" {
+  count = var.use_existing_security_group ? 0 : 1
+  url   = "https://api.ipify.org"
+  request_headers = {
+    Accept = "text/plain"
+  }
+}
+
+locals {
+  current_ip = var.use_existing_security_group ? "" : chomp(data.http.current_ip[0].response_body)
+  ssh_cidr   = var.ssh_allowed_cidr != "" ? var.ssh_allowed_cidr : (var.use_existing_security_group ? "" : "${local.current_ip}/32")
+}
+
 resource "alicloud_security_group_rule" "ssh" {
-  count             = 1
+  count             = var.use_existing_security_group ? 0 : 1
   type              = "ingress"
   ip_protocol       = "tcp"
-  nic_type          = "intranet" # VPC 中的安全组必须使用 intranet
+  nic_type          = "intranet"
   policy            = "accept"
   port_range        = "22/22"
   priority          = 1
@@ -45,12 +43,11 @@ resource "alicloud_security_group_rule" "ssh" {
   description       = "SSH access (via EIP); source from ssh_allowed_cidr or apply-time IP"
 }
 
-# K8s API 规则：允许从当前 IP 访问（通过 EIP 转发，nic_type 必须是 "intranet"）；复用安全组时也创建便于 kubectl/get-kubeconfig 可用
 resource "alicloud_security_group_rule" "k8s_api" {
-  count             = 1
+  count             = var.use_existing_security_group ? 0 : 1
   type              = "ingress"
   ip_protocol       = "tcp"
-  nic_type          = "intranet" # VPC 中的安全组必须使用 intranet
+  nic_type          = "intranet"
   policy            = "accept"
   port_range        = "6443/6443"
   priority          = 1
