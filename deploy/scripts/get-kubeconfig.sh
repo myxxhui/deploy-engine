@@ -99,6 +99,23 @@ if [ -f "$HOME/.ssh/known_hosts" ]; then
     ssh-keygen -R "$IP" -f "$HOME/.ssh/known_hosts" 2>/dev/null || true
 fi
 
+# 若本地已有可用的 kubeconfig，直接视为成功，避免重复 SSH/等待仍报错
+if [ -f "$CONFIG_OUT" ] && KUBECONFIG="$CONFIG_OUT" kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
+    log "本地 Kubeconfig 已存在且可用，跳过远程获取"
+    export KUBECONFIG="$CONFIG_OUT"
+    for RC_FILE in ~/.bashrc ~/.zshrc ~/.profile; do
+        [ -f "$RC_FILE" ] || touch "$RC_FILE"
+        sed -i.bak '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || \
+            sed -i '' '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || true
+        if ! grep -q "export KUBECONFIG=\"${CONFIG_OUT}\"" "$RC_FILE" 2>/dev/null; then
+            echo "export KUBECONFIG=\"${CONFIG_OUT}\"" >> "$RC_FILE"
+            log "已添加到 $RC_FILE"
+        fi
+    done
+    log "✅ 使用现有配置: $CONFIG_OUT"
+    exit 0
+fi
+
 # 注意：脚本内 SSH 使用 -o UserKnownHostsFile=/dev/null，不读写 known_hosts；上述清理便于本机后续手动 ssh 时也不冲突
 
 # 2. 获取密码（优先环境变量，避免 tfvars 中含 ! 等字符时解析错误；与「本机可 SSH 脚本却失败」时用 export INSTANCE_PASSWORD 重试）
@@ -268,6 +285,22 @@ while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
 done
 
 if [ "$RETRY_COUNT" -eq "$MAX_RETRIES" ]; then
+    # 远程等待超时仍报错不合适：若本地 kubeconfig 已存在且可用，视为成功
+    if [ -f "$CONFIG_OUT" ] && KUBECONFIG="$CONFIG_OUT" kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
+        log "远程等待超时，但本地 Kubeconfig 已存在且可用，继续使用"
+        export KUBECONFIG="$CONFIG_OUT"
+        for RC_FILE in ~/.bashrc ~/.zshrc ~/.profile; do
+            [ -f "$RC_FILE" ] || touch "$RC_FILE"
+            sed -i.bak '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || \
+                sed -i '' '/export KUBECONFIG.*config-.*-/d' "$RC_FILE" 2>/dev/null || true
+            if ! grep -q "export KUBECONFIG=\"${CONFIG_OUT}\"" "$RC_FILE" 2>/dev/null; then
+                echo "export KUBECONFIG=\"${CONFIG_OUT}\"" >> "$RC_FILE"
+                log "已添加到 $RC_FILE"
+            fi
+        done
+        log "✅ 使用现有配置: $CONFIG_OUT"
+        exit 0
+    fi
     diagnose_k3s
     error "K3s 未在预期时间内就绪"
     exit 1
