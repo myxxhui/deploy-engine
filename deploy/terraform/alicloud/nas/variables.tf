@@ -41,3 +41,15 @@ variable "existing_access_group_name" {
   type        = string
   default     = ""
 }
+
+variable "use_existing_mount_target" {
+  description = "是否复用已有挂载点（为 true 时使用 existing_mount_target_domain，不创建新挂载点，避免每文件系统 2 个上限）"
+  type        = bool
+  default     = false
+}
+
+variable "existing_mount_target_domain" {
+  description = "已存在的 NAS 挂载点域名（当 use_existing_mount_target=true 时使用，如 xxx.cn-hongkong.nas.aliyuncs.com）"
+  type        = string
+  default     = ""
+}

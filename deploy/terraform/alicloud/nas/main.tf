@@ -45,6 +45,8 @@ resource "alicloud_nas_access_rule" "vpc" {
 }
 
 resource "alicloud_nas_mount_target" "main" {
+  count = var.use_existing_mount_target ? 0 : 1
+
   file_system_id    = local.file_system_id
   access_group_name = local.access_group_name
   vswitch_id        = var.vswitch_id

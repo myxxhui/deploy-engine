@@ -33,6 +33,7 @@ locals {
   use_existing_sg      = var.security_group_use_existing || var.security_group_existing_id != ""
   use_existing_nas_fs  = var.nas_use_existing_file_system || var.nas_existing_file_system_id != ""
   use_existing_nas_ag  = var.nas_use_existing_access_group || var.nas_existing_access_group_name != ""
+  use_existing_nas_mt  = var.nas_use_existing_mount_target || var.nas_existing_mount_target_domain != ""
 }
 
 module "vpc" {
@@ -65,14 +66,16 @@ module "security" {
 module "nas" {
   source = "./nas"
 
-  project_name               = local.project_name
-  env_id                     = var.env_id
-  vpc_cidr                   = module.vpc.vpc_cidr
-  vswitch_id                 = module.vpc.vswitch_id
-  use_existing_file_system   = local.use_existing_nas_fs
-  existing_file_system_id   = var.nas_existing_file_system_id
-  use_existing_access_group  = local.use_existing_nas_ag
-  existing_access_group_name = var.nas_existing_access_group_name
+  project_name                 = local.project_name
+  env_id                       = var.env_id
+  vpc_cidr                     = module.vpc.vpc_cidr
+  vswitch_id                   = module.vpc.vswitch_id
+  use_existing_file_system     = local.use_existing_nas_fs
+  existing_file_system_id      = var.nas_existing_file_system_id
+  use_existing_access_group    = local.use_existing_nas_ag
+  existing_access_group_name   = var.nas_existing_access_group_name
+  use_existing_mount_target    = local.use_existing_nas_mt
+  existing_mount_target_domain = var.nas_existing_mount_target_domain
 }
 
 locals {

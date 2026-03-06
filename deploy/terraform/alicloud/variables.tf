@@ -187,6 +187,18 @@ variable "nas_existing_access_group_name" {
   default     = ""
 }
 
+variable "nas_use_existing_mount_target" {
+  description = "是否复用已有 NAS 挂载点（为 true 时使用 nas_existing_mount_target_domain，不创建新挂载点）"
+  type        = bool
+  default     = false
+}
+
+variable "nas_existing_mount_target_domain" {
+  description = "已存在的 NAS 挂载点域名（如 xxx.cn-hongkong.nas.aliyuncs.com）"
+  type        = string
+  default     = ""
+}
+
 variable "ram_role_name" {
   description = "ECS RAM Role 名称（可选，需在控制台预先创建；不自动创建 Role/Policy）"
   type        = string
