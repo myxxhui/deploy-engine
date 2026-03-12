@@ -16,7 +16,7 @@ deploy-engine 通过 `terraform init -backend-config=prefix=<project>/<env>` 动
 OSS 路径前缀，实现同一个 Bucket 下不同环境的 state 隔离。
 
 ```
-oss://diting-terraform-state/
+oss://deploy-engine-k3s-storage/
 ├── diting/prod/terraform.tfstate    ← make deploy diting prod
 ├── diting/dev/terraform.tfstate     ← make deploy diting dev
 ├── lighthouse/dev/terraform.tfstate ← make deploy lighthouse dev
@@ -29,7 +29,7 @@ oss://diting-terraform-state/
 ```hcl
 # provider.tf
 backend "oss" {
-  bucket = "diting-terraform-state"
+  bucket = "deploy-engine-k3s-storage"
   region = "cn-hongkong"
 }
 ```
@@ -59,14 +59,14 @@ args := []string{"init", "-backend-config=prefix=" + project + "/" + env}
 
 ```bash
 # 使用 aliyun CLI
-aliyun oss mb oss://diting-terraform-state --region cn-hongkong
+aliyun oss mb oss://deploy-engine-k3s-storage --region cn-hongkong
 
 # 开启版本控制（防误删，可回溯历史 state）
-aliyun oss bucket-versioning --method put oss://diting-terraform-state enabled
+aliyun oss bucket-versioning --method put oss://deploy-engine-k3s-storage enabled
 ```
 
 也可以在阿里云控制台 → OSS → 创建 Bucket：
-- 名称：`diting-terraform-state`
+- 名称：`deploy-engine-k3s-storage`
 - 地域：`cn-hongkong`（与部署资源同区域）
 - 存储类型：标准
 - 版本控制：开启
@@ -107,7 +107,7 @@ Do you want to copy existing state to the new backend?
 terraform state list
 
 # 验证 OSS 上文件存在
-aliyun oss ls oss://diting-terraform-state/diting/prod/
+aliyun oss ls oss://deploy-engine-k3s-storage/diting/prod/
 ```
 
 预期输出包含 `terraform.tfstate`。
@@ -140,13 +140,13 @@ terraform state list
 根据 project 和 env 参数注入正确的 prefix：
 
 ```bash
-# 部署 prod — state 写入 oss://diting-terraform-state/diting/prod/
+# 部署 prod — state 写入 oss://deploy-engine-k3s-storage/diting/prod/
 make deploy diting prod
 
-# 部署 dev — state 写入 oss://diting-terraform-state/diting/dev/
+# 部署 dev — state 写入 oss://deploy-engine-k3s-storage/diting/dev/
 make deploy diting dev
 
-# 销毁 prod — 读取 oss://diting-terraform-state/diting/prod/
+# 销毁 prod — 读取 oss://deploy-engine-k3s-storage/diting/prod/
 make down diting prod
 ```
 
@@ -163,7 +163,7 @@ OSS backend 默认不支持 state 锁。如果有多人同时执行 `terraform a
 
 ```hcl
 backend "oss" {
-  bucket              = "diting-terraform-state"
+  bucket              = "deploy-engine-k3s-storage"
   region              = "cn-hongkong"
   tablestore_endpoint = "https://diting-tf-lock.cn-hongkong.ots.aliyuncs.com"
   tablestore_table    = "terraform-state-lock"
