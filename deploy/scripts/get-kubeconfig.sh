@@ -81,10 +81,6 @@ mkdir -p "$KUBE_DIR"
 
 # 1. 从 Terraform 获取 ECS IP（从 live 目录读取状态）
 cd "$TF_LIVE_DIR"
-if [ ! -f terraform.tfstate ]; then
-    error "Terraform 状态文件不存在，请先执行 deploy-engine 部署或 terraform apply"
-    exit 1
-fi
 
 IP=$(terraform output -raw public_ip 2>/dev/null || echo "")
 if [ -z "$IP" ] || [ "$IP" = "Instance Released" ]; then
