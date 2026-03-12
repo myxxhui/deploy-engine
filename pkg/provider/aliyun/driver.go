@@ -54,8 +54,9 @@ func (d *Driver) backendPrefix() string {
 }
 
 // terraformInit 执行 terraform init 并注入 -backend-config=prefix 实现多环境 state 隔离。
+// -reconfigure 避免 backend 变更（local→oss 或 prefix 切换）时交互式提示阻塞自动化流程。
 func (d *Driver) terraformInit(ctx context.Context, tfDir string) error {
-	args := []string{"init", "-backend-config=prefix=" + d.backendPrefix()}
+	args := []string{"init", "-reconfigure", "-backend-config=prefix=" + d.backendPrefix()}
 	return d.runTerraform(ctx, tfDir, args, nil)
 }
 
