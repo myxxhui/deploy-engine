@@ -20,7 +20,7 @@ terraform {
   # 通过 -backend-config=prefix=<project>/<env> 动态注入，实现 diting/prod、diting/dev 隔离。
   # 详见 docs/REMOTE_STATE_MIGRATION.md
   backend "oss" {
-    bucket = "diting-terraform-state"
+    bucket = "deploy-engine-k3s-storage"
     region = "cn-hongkong"
   }
 }
