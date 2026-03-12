@@ -1,12 +1,43 @@
 # Terraform Remote State 迁移实践
 
-> 将 Terraform state 从 local backend 迁移到 OSS backend，实现多机器共享同一份 state。
+> 将 Terraform state 从 local backend 迁移到 OSS backend，实现多机器共享、多环境隔离。
 
 ## 背景
 
 local backend 下，`terraform.tfstate` 存储在本地磁盘。每台机器各自维护一份 state，
 导致在不同机器执行 `make deploy` 时出现 state 不一致（资源漂移、provider 地址错位、
 误删资源等）。改用 OSS backend 后，所有机器读写同一份远程 state，彻底消除此类问题。
+
+---
+
+## 多环境隔离方案
+
+deploy-engine 通过 `terraform init -backend-config=prefix=<project>/<env>` 动态注入
+OSS 路径前缀，实现同一个 Bucket 下不同环境的 state 隔离。
+
+```
+oss://diting-terraform-state/
+├── diting/prod/terraform.tfstate    ← make deploy diting prod
+├── diting/dev/terraform.tfstate     ← make deploy diting dev
+├── lighthouse/dev/terraform.tfstate ← make deploy lighthouse dev
+└── ...
+```
+
+`provider.tf` 中只固定 `bucket` 和 `region`（不变的部分），`prefix` 由 Go 代码根据
+`-project` 和 `-env` 参数在 `terraform init` 时注入：
+
+```hcl
+# provider.tf
+backend "oss" {
+  bucket = "diting-terraform-state"
+  region = "cn-hongkong"
+}
+```
+
+```go
+// driver.go — terraformInit
+args := []string{"init", "-backend-config=prefix=" + project + "/" + env}
+```
 
 ---
 
@@ -24,150 +55,115 @@ local backend 下，`terraform.tfstate` 存储在本地磁盘。每台机器各�
 
 ### 1. 创建专用 State Bucket
 
-> 建议单独创建一个 bucket，不与应用数据混用。
+> 单独创建一个 bucket，不与应用数据混用。
 
 ```bash
-# 使用 aliyun CLI（已安装在服务器）
+# 使用 aliyun CLI
 aliyun oss mb oss://diting-terraform-state --region cn-hongkong
 
 # 开启版本控制（防误删，可回溯历史 state）
 aliyun oss bucket-versioning --method put oss://diting-terraform-state enabled
 ```
 
-如果不想用 CLI，也可以在阿里云控制台 → OSS → 创建 Bucket：
+也可以在阿里云控制台 → OSS → 创建 Bucket：
 - 名称：`diting-terraform-state`
 - 地域：`cn-hongkong`（与部署资源同区域）
 - 存储类型：标准
 - 版本控制：开启
 
-### 2. 修改 provider.tf
+### 2. 在有完整 state 的机器上迁移（家里的 Mac）
 
-在**源仓库** `/mnt/.diting/deploy-engine` 中修改：
-
-```bash
-cd /mnt/.diting/deploy-engine/deploy/terraform/alicloud
-```
-
-将 `provider.tf` 中的 `backend "local"` 替换为 `backend "oss"`：
-
-```hcl
-terraform {
-  required_version = ">= 1.0"
-
-  required_providers {
-    alicloud = {
-      source  = "aliyun/alicloud"
-      version = "~> 1.200"
-    }
-    http = {
-      source  = "hashicorp/http"
-      version = "~> 3.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
-    }
-  }
-
-  backend "oss" {
-    bucket = "diting-terraform-state"
-    prefix = "deploy-engine/alicloud"
-    key    = "terraform.tfstate"
-    region = "cn-hongkong"
-  }
-}
-
-provider "alicloud" {
-  region = var.region
-}
-```
-
-> **key 路径说明**：最终 state 文件存储在
-> `oss://diting-terraform-state/deploy-engine/alicloud/terraform.tfstate`。
-> 若后续有多个项目/环境，可调整 prefix 实现隔离（如 `diting/prod`）。
-
-### 3. 迁移现有 State
-
-在**有完整 state 的机器**上执行迁移（通常是家里的 Mac，因为那里的 state 最新最准确）。
+代码已经把 `provider.tf` 改为 `backend "oss"`，拉取最新代码后迁移：
 
 ```bash
-# 确保凭证可用
 export ALICLOUD_ACCESS_KEY="你的AK"
 export ALICLOUD_SECRET_KEY="你的SK"
 
-# 进入 terraform 目录
-cd /path/to/deploy-engine/deploy/terraform/alicloud
+cd deploy-engine/deploy/terraform/alicloud
 
-# 备份本地 state（重要！）
+# 备份本地 state
 cp terraform.tfstate terraform.tfstate.backup-before-migration
 
-# 执行迁移（terraform 会自动将 local state 上传到 OSS）
-terraform init -migrate-state
+# 迁移：terraform 会提示是否拷贝现有 state 到新 backend
+# -backend-config=prefix 指定该环境的 state 路径
+terraform init \
+  -migrate-state \
+  -backend-config=prefix=diting/prod
 ```
 
-Terraform 会提示：
+Terraform 提示：
 
 ```
 Do you want to copy existing state to the new backend?
-  ...
   Enter a value: yes
 ```
 
-输入 `yes` 确认。
+输入 `yes`。
 
-### 4. 验证远程 State
+### 3. 验证远程 State
 
 ```bash
-# 检查远程 state 是否可正常读取
+# 验证 state 可正常读取
 terraform state list
 
-# 检查 OSS 上文件是否存在
-aliyun oss ls oss://diting-terraform-state/deploy-engine/alicloud/
+# 验证 OSS 上文件存在
+aliyun oss ls oss://diting-terraform-state/diting/prod/
 ```
 
-### 5. 在其他机器同步
+预期输出包含 `terraform.tfstate`。
 
-在**公司服务器**（或任何其他机器）上：
+### 4. 在其他机器同步（公司服务器）
 
 ```bash
-# 确保凭证可用
 export ALICLOUD_ACCESS_KEY="你的AK"
 export ALICLOUD_SECRET_KEY="你的SK"
 
-# 更新 deploy-engine 代码（拉取包含 backend "oss" 的新版本）
+# 更新代码
 cd /mnt/.diting/diting-infra
 git submodule update --init --remote deploy-engine
 
-# 删除本地旧 state 和缓存（避免冲突）
+# 清理旧的本地 state 和缓存
 cd deploy-engine/deploy/terraform/alicloud
 rm -f terraform.tfstate terraform.tfstate.backup
 rm -rf .terraform .terraform.lock.hcl
 
-# 重新初始化（自动连接远程 state）
-terraform init
+# 初始化（自动连接远程 state）
+terraform init -backend-config=prefix=diting/prod
 
 # 验证
 terraform state list
 ```
 
-此后，任何机器上执行 `make deploy diting prod` 都会读写同一份远程 state。
+### 5. 日常使用
+
+迁移完成后，`make deploy` / `make down` 无需额外操作。deploy-engine Go 代码会自动
+根据 project 和 env 参数注入正确的 prefix：
+
+```bash
+# 部署 prod — state 写入 oss://diting-terraform-state/diting/prod/
+make deploy diting prod
+
+# 部署 dev — state 写入 oss://diting-terraform-state/diting/dev/
+make deploy diting dev
+
+# 销毁 prod — 读取 oss://diting-terraform-state/diting/prod/
+make down diting prod
+```
 
 ---
 
 ## State 锁（可选但推荐）
 
-OSS backend 默认**不支持 state 锁**。如果有多人同时执行 `terraform apply` 的可能，
+OSS backend 默认不支持 state 锁。如果有多人同时执行 `terraform apply` 的可能，
 建议配置 TableStore 实现锁机制：
 
 1. 在阿里云控制台 → 表格存储 → 创建实例（如 `diting-tf-lock`）
 2. 创建表：名称 `terraform-state-lock`，主键 `LockID`（String 类型）
-3. 修改 backend 配置：
+3. 修改 `provider.tf` 中的 backend：
 
 ```hcl
 backend "oss" {
   bucket              = "diting-terraform-state"
-  prefix              = "deploy-engine/alicloud"
-  key                 = "terraform.tfstate"
   region              = "cn-hongkong"
   tablestore_endpoint = "https://diting-tf-lock.cn-hongkong.ots.aliyuncs.com"
   tablestore_table    = "terraform-state-lock"
@@ -181,7 +177,7 @@ backend "oss" {
 ## 回滚（如需退回 local backend）
 
 ```bash
-# 将 provider.tf 中 backend 改回 "local"，然后：
+# 将 provider.tf 中 backend 改回 "local" { path = "terraform.tfstate" }，然后：
 terraform init -migrate-state
 # 输入 yes，远程 state 会下载到本地
 ```
@@ -194,10 +190,15 @@ terraform init -migrate-state
 A：确认远程 state 正常后（`terraform state list` 输出正确），旧文件可安全删除。
 建议保留一段时间作为备份。
 
-**Q：deploy-engine Go 代码需要改吗？**
-A：不需要。Go 代码执行 `terraform init` + `terraform apply`，backend 配置由 .tf 文件控制，
-代码无感知。
+**Q：deploy-engine Go 代码做了什么？**
+A：`driver.go` 中的 `terraformInit` 方法在 `terraform init` 时自动传入
+`-backend-config=prefix=<project>/<env>`，`Up()` 和 `Down()` 都会调用，
+确保每个环境读写自己的 state。
 
 **Q：凭证从哪来？**
 A：OSS backend 使用与 alicloud provider 相同的凭证链：
 环境变量 `ALICLOUD_ACCESS_KEY` / `ALICLOUD_SECRET_KEY` → `~/.alicloud/config.json` → ECS RAM Role。
+
+**Q：新增环境需要额外操作吗？**
+A：不需要。首次 `make deploy <project> <env>` 时，`terraform init` 会在 OSS 上
+自动创建 `<project>/<env>/terraform.tfstate`，无需手动干预。

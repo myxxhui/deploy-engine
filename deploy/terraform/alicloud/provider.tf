@@ -16,8 +16,12 @@ terraform {
     }
   }
 
-  backend "local" {
-    path = "terraform.tfstate"
+  # 多环境共享 state：bucket/region 固定，prefix 由 deploy-engine 在 terraform init 时
+  # 通过 -backend-config=prefix=<project>/<env> 动态注入，实现 diting/prod、diting/dev 隔离。
+  # 详见 docs/REMOTE_STATE_MIGRATION.md
+  backend "oss" {
+    bucket = "diting-terraform-state"
+    region = "cn-hongkong"
   }
 }
 

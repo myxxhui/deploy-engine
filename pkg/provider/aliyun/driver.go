@@ -23,24 +23,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// #region agent log
-const debugLogPath = "/root/sean/workspace/.diting/.cursor/debug-71deed.log"
-
-func agentLog(location, message, hypothesisId string, data map[string]interface{}) {
-	if data == nil {
-		data = make(map[string]interface{})
-	}
-	payload := map[string]interface{}{"sessionId": "71deed", "location": location, "message": message, "hypothesisId": hypothesisId, "data": data, "timestamp": time.Now().UnixMilli()}
-	if b, err := json.Marshal(payload); err == nil {
-		if f, err := os.OpenFile(debugLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-			f.Write(append(b, '\n'))
-			f.Close()
-		}
-	}
-}
-
-// #endregion
-
 const providerName = "aliyun"
 
 // Driver 使用模块内 deploy/terraform/alicloud 与 deploy/scripts 实现 Up/Down/GetKubeConfig。
@@ -57,6 +39,25 @@ type Driver struct {
 }
 
 func (d *Driver) Name() string { return providerName }
+
+// backendPrefix 返回 OSS backend 的 prefix，用于多环境 state 隔离：<project>/<env>。
+func (d *Driver) backendPrefix() string {
+	p := d.Project
+	if p == "" {
+		p = "default"
+	}
+	e := d.EnvID
+	if e == "" {
+		e = "dev"
+	}
+	return p + "/" + e
+}
+
+// terraformInit 执行 terraform init 并注入 -backend-config=prefix 实现多环境 state 隔离。
+func (d *Driver) terraformInit(ctx context.Context, tfDir string) error {
+	args := []string{"init", "-backend-config=prefix=" + d.backendPrefix()}
+	return d.runTerraform(ctx, tfDir, args, nil)
+}
 
 func (d *Driver) root() string {
 	if d.Root != "" {
@@ -445,7 +446,7 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		return nil, fmt.Errorf("aliyun: %w", err)
 	}
 
-	if err := d.runTerraform(ctx, tfDir, []string{"init"}, nil); err != nil {
+	if err := d.terraformInit(ctx, tfDir); err != nil {
 		return nil, fmt.Errorf("aliyun: terraform init: %w", err)
 	}
 
@@ -566,11 +567,6 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		if diskCategoryVal == "" {
 			diskCategoryVal = mergedVars.DiskCategory
 		}
-		// #region agent log
-		agentLog("driver.go:Up:disk_category", "disk_category resolution", "H1", map[string]interface{}{
-			"tfvarsPath": tfvars, "diskFromTfvars": diskFromTfvars, "mergedVarsDiskCategory": mergedVars.DiskCategory, "diskCategoryVal": diskCategoryVal, "willAppendVar": diskCategoryVal != "",
-		})
-		// #endregion
 		if diskCategoryVal != "" {
 			applyArgs = append(applyArgs, "-var=disk_category="+diskCategoryVal)
 			fmt.Fprintf(os.Stderr, "deploy-engine: 使用系统盘类型 disk_category=%s（来自 tfvars 或 deploy 配置）\n", diskCategoryVal)
@@ -583,29 +579,17 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		nasUseExisting := nasUseExistingAccessGroupFromTfvars(tfvars)
 		applyArgs = append(applyArgs, "-var=nas_use_existing_access_group="+strconv.FormatBool(nasUseExisting))
 
-		// #region agent log
-		agentLog("driver.go:Up:before-apply", "calling terraform apply", "H1", map[string]interface{}{"tfDir": tfDir})
-		// #endregion
 		// 强制子进程 ALICLOUD_REGION，避免宿主机环境变量覆盖 var.region 导致请求发往错误地域（如 cn-beijing）
 		applyEnv := map[string]string{}
 		if regionVal != "" {
 			applyEnv["ALICLOUD_REGION"] = regionVal
 		}
 		if err := d.runTerraformApplyWithStderrLog(ctx, tfDir, applyArgs, applyEnv); err != nil {
-			// #region agent log
-			agentLog("driver.go:Up:after-apply", "terraform apply error", "H1", map[string]interface{}{"error": err.Error()})
-			// #endregion
 			return nil, fmt.Errorf("aliyun: terraform apply: %w", err)
 		}
-		// #region agent log
-		agentLog("driver.go:Up:after-apply", "terraform apply ok", "H1", nil)
-		// #endregion
 
 		var errOut error
 		instanceID, errOut = d.terraformOutput(ctx, tfDir, "instance_id")
-		// #region agent log
-		agentLog("driver.go:Up:terraformOutput-instance_id", "terraform output instance_id", "H2", map[string]interface{}{"err": errOut != nil, "instanceID": instanceID})
-		// #endregion
 		if errOut != nil {
 			return nil, fmt.Errorf("aliyun: terraform output instance_id: %w", errOut)
 		}
@@ -618,17 +602,11 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		}
 	}
 
-	// #region agent log
-	agentLog("driver.go:Up:before-fetchKubeConfig", "calling fetchKubeConfig", "H3", nil)
-	// #endregion
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "【步骤 3/5】等待 K3s 就绪并获取 kubeconfig...")
 	os.Stderr.Sync()
 	// 始终使用完整等待（60×5s），避免跳过 apply 时 24s 不足导致 K3s 未就绪
 	kubeConfig, kubeErr := d.fetchKubeConfigWithOpts(ctx, false)
-	// #region agent log
-	agentLog("driver.go:Up:after-fetchKubeConfig", "fetchKubeConfig done", "H3", map[string]interface{}{"err": kubeErr != nil, "kubeConfigLen": len(kubeConfig)})
-	// #endregion
 	if kubeErr != nil {
 		return nil, fmt.Errorf("aliyun: 获取 kubeconfig 失败: %w", kubeErr)
 	}
@@ -696,6 +674,9 @@ func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) 
 	}
 	if _, err := os.Stat(tfvars); os.IsNotExist(err) {
 		return fmt.Errorf("tfvars 不存在: %s（无法执行 destroy）", tfvars)
+	}
+	if err := d.terraformInit(ctx, tfDir); err != nil {
+		return fmt.Errorf("aliyun: terraform init: %w", err)
 	}
 	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script")
 	tfVarsAbs, _ := filepath.Abs(tfvars)
@@ -828,9 +809,6 @@ func (d *Driver) runTerraformApplyWithStderrLog(ctx context.Context, tfDir strin
 		if len(stderrStr) > maxStderrLogLen {
 			stderrStr = stderrStr[len(stderrStr)-maxStderrLogLen:]
 		}
-		// #region agent log
-		agentLog("driver.go:runTerraformApplyWithStderrLog", "terraform apply stderr on failure", "H1", map[string]interface{}{"stderrSnippet": stderrStr})
-		// #endregion
 	}
 	return err
 }
