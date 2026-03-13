@@ -55,9 +55,10 @@ func (d *Driver) backendPrefix() string {
 
 // terraformInit 执行 terraform init 并注入 -backend-config=prefix 实现多环境 state 隔离。
 // -reconfigure 避免 backend 变更（local→oss 或 prefix 切换）时交互式提示阻塞自动化流程。
-func (d *Driver) terraformInit(ctx context.Context, tfDir string) error {
+// stdinForMigration：非空时（如 "no\n"）作为 stdin 传入，用于 backend 迁移时非交互选择「使用新 backend 已有 state」不覆盖。
+func (d *Driver) terraformInit(ctx context.Context, tfDir string, stdinForMigration string) error {
 	args := []string{"init", "-reconfigure", "-backend-config=prefix=" + d.backendPrefix()}
-	return d.runTerraform(ctx, tfDir, args, nil)
+	return d.runTerraformWithStdin(ctx, tfDir, args, nil, stdinForMigration)
 }
 
 func (d *Driver) root() string {
@@ -447,7 +448,7 @@ func (d *Driver) Up(ctx context.Context, cfg *config.DeploymentConfig) (*provide
 		return nil, fmt.Errorf("aliyun: %w", err)
 	}
 
-	if err := d.terraformInit(ctx, tfDir); err != nil {
+	if err := d.terraformInit(ctx, tfDir, ""); err != nil {
 		return nil, fmt.Errorf("aliyun: terraform init: %w", err)
 	}
 
@@ -676,7 +677,8 @@ func (d *Driver) Down(ctx context.Context, clusterCtx *provider.ClusterContext) 
 	if _, err := os.Stat(tfvars); os.IsNotExist(err) {
 		return fmt.Errorf("tfvars 不存在: %s（无法执行 destroy）", tfvars)
 	}
-	if err := d.terraformInit(ctx, tfDir); err != nil {
+	// Down 时若 backend 从 local 切到 oss 且两端都有 state，init 会询问是否用本地覆盖 OSS；传 "no" 非交互选择「使用 OSS 已有 state」。
+	if err := d.terraformInit(ctx, tfDir, "no\n"); err != nil {
 		return fmt.Errorf("aliyun: terraform init: %w", err)
 	}
 	_ = d.runTerraformStateRm(ctx, tfDir, "module.oss.alicloud_oss_bucket_object.init_script")
@@ -744,10 +746,18 @@ func (d *Driver) GetKubeConfig(ctx context.Context, _ string) ([]byte, error) {
 
 // runTerraform 执行 terraform 命令。envOverrides 非空时合并进子进程环境（用于强制 ALICLOUD_REGION 等，避免宿主机环境覆盖 tfvars）。
 func (d *Driver) runTerraform(ctx context.Context, tfDir string, args []string, envOverrides map[string]string) error {
+	return d.runTerraformWithStdin(ctx, tfDir, args, envOverrides, "")
+}
+
+// runTerraformWithStdin 同 runTerraform，但可传入 stdin 内容（如 backend 迁移时答 "no" 使用 OSS 已有 state，避免交互 EOF）。
+func (d *Driver) runTerraformWithStdin(ctx context.Context, tfDir string, args []string, envOverrides map[string]string, stdin string) error {
 	cmd := exec.CommandContext(ctx, "terraform", args...)
 	cmd.Dir = tfDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	if len(envOverrides) > 0 {
 		env := os.Environ()
 		overridden := make(map[string]bool)
