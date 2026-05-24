@@ -114,7 +114,8 @@ nodes:
 # 永驻资源（VPC/SG/NAS/独立盘/OSS）均有 lifecycle { prevent_destroy = true }，tier-1/tier-2 不会动到。
 
 TF_DIR := deploy/terraform/alicloud
-TF_VAR_FILE := $(if $(CONFIG_ROOT),$(CONFIG_ROOT)/terraform-$(PROJECT)-$(ENV).tfvars,config/terraform-$(PROJECT)-$(ENV).tfvars)
+# TF_VAR_FILE 总是绝对路径（CONFIG_ROOT 为空时用 CURDIR 前缀），避免 cd $(TF_DIR) 后相对路径失效
+TF_VAR_FILE := $(if $(CONFIG_ROOT),$(CONFIG_ROOT)/terraform-$(PROJECT)-$(ENV).tfvars,$(CURDIR)/config/terraform-$(PROJECT)-$(ENV).tfvars)
 
 _require_stack:
 	@if [ -z "$(STACK)" ]; then echo "错误: 请通过 STACK=<id> 指定 stack（base/train/infer）"; exit 1; fi
@@ -125,8 +126,13 @@ _require_stack:
 # 兼容旧使用：STACK=base 时等价 make deploy；但 deploy 走 Go orchestrator 完成 kubeconfig 拉取，建议优先用 deploy
 up-stack: _require_stack
 	@echo "[up-stack] STACK=$(STACK) PROJECT=$(PROJECT) ENV=$(ENV)"
+	@cd $(TF_DIR) && terraform init \
+	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
+	  -reconfigure \
+	  -input=false \
+	  -no-color > /dev/null
 	@cd $(TF_DIR) && terraform apply -auto-approve \
-	  -var-file="$(CURDIR)/$(TF_VAR_FILE)" \
+	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
 	  -var="project=$(PROJECT)" \
 	  -target='module.ecs.alicloud_eip_address.stack["$(STACK)"]' \
@@ -137,8 +143,13 @@ up-stack: _require_stack
 # tier-1：销单 stack（仅 ECS+EIP+attach；永驻资源 lifecycle prevent_destroy 保护）
 down-stack: _require_stack
 	@echo "[down-stack] STACK=$(STACK) PROJECT=$(PROJECT) ENV=$(ENV)"
+	@cd $(TF_DIR) && terraform init \
+	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
+	  -reconfigure \
+	  -input=false \
+	  -no-color > /dev/null
 	@cd $(TF_DIR) && terraform destroy -auto-approve \
-	  -var-file="$(CURDIR)/$(TF_VAR_FILE)" \
+	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
 	  -var="project=$(PROJECT)" \
 	  -target='module.ecs.alicloud_disk_attachment.stack["$(STACK)"]' \
@@ -151,8 +162,13 @@ down-platform-base:
 	@if [ -z "$(PROJECT)" ]; then echo "错误: 请指定 project，如 make down-platform-base diting prod"; exit 1; fi
 	@if [ ! -f "$(TF_VAR_FILE)" ]; then echo "错误: tfvars 不存在 ($(TF_VAR_FILE))"; exit 1; fi
 	@echo "[down-platform-base] 销所有 stack ECS+EIP · 保留永驻 10 项"
+	@cd $(TF_DIR) && terraform init \
+	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
+	  -reconfigure \
+	  -input=false \
+	  -no-color > /dev/null
 	@cd $(TF_DIR) && terraform destroy -auto-approve \
-	  -var-file="$(CURDIR)/$(TF_VAR_FILE)" \
+	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
 	  -var="project=$(PROJECT)" \
 	  -target='module.ecs.alicloud_disk_attachment.stack' \
@@ -183,8 +199,13 @@ down-all:
 	  'alicloud_disk.prod_data[0]'; do \
 	    terraform state rm "$$r" 2>/dev/null || true; \
 	  done
+	@cd $(TF_DIR) && terraform init \
+	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
+	  -reconfigure \
+	  -input=false \
+	  -no-color > /dev/null
 	@cd $(TF_DIR) && terraform destroy -auto-approve \
-	  -var-file="$(CURDIR)/$(TF_VAR_FILE)" \
+	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
 	  -var="project=$(PROJECT)"
 
@@ -192,6 +213,11 @@ down-all:
 platform-status:
 	@if [ -z "$(PROJECT)" ]; then echo "用法: make platform-status <project> <env>"; exit 1; fi
 	@echo "=== Terraform stacks_info ==="
+	@cd $(TF_DIR) && terraform init \
+	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
+	  -reconfigure \
+	  -input=false \
+	  -no-color > /dev/null 2>&1 || true
 	@cd $(TF_DIR) && terraform output -json stacks_info 2>/dev/null || echo "（无 state 或未部署）"
 	@echo ""
 	@echo "=== KUBECONFIG 与 nodes ==="
