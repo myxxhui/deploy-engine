@@ -247,10 +247,12 @@ fi
 [ -z "$${K3S_ROLE}" ] && K3S_ROLE="server"
 log "[stack] STACK_ID=$${STACK_ID:-<empty>} K3S_ROLE=$${K3S_ROLE} NODE_LABELS=$${NODE_LABELS:-<empty>}"
 
-# 组装 --node-label 参数
+# 组装 --node-label 参数（避免 $$( 在 templatefile 中无法转义为 $( 的语法问题）
 NODE_LABEL_ARGS=""
 if [ -n "$${NODE_LABELS}" ]; then
-  for label in $$(echo "$${NODE_LABELS}" | tr ',' ' '); do
+  IFS=',' read -ra _LABEL_ARR <<< "$${NODE_LABELS}"
+  for label in "$${_LABEL_ARR[@]}"; do
+    [ -z "$${label}" ] && continue
     NODE_LABEL_ARGS="$${NODE_LABEL_ARGS} --node-label $${label}"
   done
 fi
@@ -270,7 +272,7 @@ K3S_INSTALL_EXIT_CODE=0
 curl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | sh -s - server \
   --token "$${K3S_TOKEN}" \
   --tls-san "$${PUBLIC_IP}" \
-  --tls-san "$$(hostname)" \
+  --tls-san "`hostname`" \
   --disable traefik \
   --disable servicelb \
   --write-kubeconfig-mode 644 \
