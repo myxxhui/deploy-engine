@@ -53,3 +53,9 @@ output "data_disk_id" {
   description = "独立数据盘 ID（enable_prod_data_disk 时有效；Down 后保留供再次 Up 挂载）"
   value       = local.data_disk_id
 }
+
+# v2 新增：多 stack 信息（map · 用于 make platform-status / 应用仓 K8s 注册）
+output "stacks_info" {
+  description = "所有 active stack 的 { stack_id => { instance_id, public_ip, image_id } } 映射"
+  value       = module.ecs.stacks_info
+}

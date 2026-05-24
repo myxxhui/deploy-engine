@@ -8,17 +8,6 @@ variable "env_id" {
   type        = string
 }
 
-variable "enable_spot" {
-  description = "是否启用 Spot 实例"
-  type        = bool
-  default     = true
-}
-
-variable "instance_type" {
-  description = "ECS 实例规格"
-  type        = string
-}
-
 variable "instance_password" {
   description = "ECS 实例 root 密码"
   type        = string
@@ -41,36 +30,6 @@ variable "vswitch_id" {
   type        = string
 }
 
-variable "spot_strategy" {
-  description = "Spot 实例出价策略"
-  type        = string
-  default     = "SpotAsPriceGo"
-}
-
-variable "spot_price_limit" {
-  description = "Spot 最高出价"
-  type        = number
-  default     = 0.5
-}
-
-variable "disk_category" {
-  description = "系统盘类型（IoOptimized 实例仅支持 cloud_efficiency/cloud_ssd；非 IoOptimized 可用 cloud）"
-  type        = string
-  default     = "cloud_efficiency"
-}
-
-variable "disk_size" {
-  description = "系统盘大小（GB）"
-  type        = number
-  default     = 100
-}
-
-variable "image_id" {
-  description = "ECS 镜像 ID（默认使用动态查找）"
-  type        = string
-  default     = "ubuntu_22_04_x64_20G_alibase_20251226"
-}
-
 variable "user_data" {
   description = "User Data 脚本路径（用于 K3s 自动点火）"
   type        = string
@@ -78,7 +37,7 @@ variable "user_data" {
 }
 
 variable "user_data_vars" {
-  description = "User Data 模板变量"
+  description = "User Data 模板变量（注入到所有 stack）"
   type        = map(string)
   default     = {}
 }
@@ -101,9 +60,48 @@ variable "ram_role_name" {
   default     = ""
 }
 
-# Stage2-06 生产数据环境：独立数据盘 ID（非空时挂载到实例；Down 时仅销毁 attachment 与 ECS，盘在根级保留）
 variable "data_disk_id" {
-  description = "独立数据盘 ID（enable_prod_data_disk 时由根级传入；Down 保留盘时不销毁此盘）"
+  description = "独立数据盘 ID（非空时挂载到 attach_data_disk=true 的 stack；Down 保留盘时不销毁此盘）"
   type        = string
   default     = ""
+}
+
+# ============================================================================
+# v2 新增：多 stack `for_each` 模型
+# ============================================================================
+# 旧的 enable_spot / instance_type / spot_strategy / disk_category 等单实例变量已废弃。
+# 现在通过 stacks map 声明若干 stack，每个 stack 一组 ECS + EIP + 系统盘。
+# 兼容旧调用：当 stacks = {} 时，根级 main.tf 会用 var.instance_type 等合成一个 "base" stack。
+variable "stacks" {
+  description = <<EOT
+多 stack 定义（按 stack_id 分组创建 ECS + EIP + 系统盘）。
+key = stack_id（如 base / train / infer）。
+
+字段说明：
+  instance_type        - ECS 规格（如 ecs.u1-c1m4.xlarge / ecs.gn6i-c4g1.xlarge）
+  spot_strategy        - SpotAsPriceGo | SpotWithPriceLimit | NoSpot
+  spot_price_limit     - Spot 最高出价（NoSpot 时忽略）
+  image_family         - ubuntu_22_04 | ubuntu_22_04_gpu（gpu 自动选阿里云 GPU 预装镜像）
+  system_disk_gb       - 系统盘 GB
+  system_disk_category - cloud_essd | cloud_ssd | cloud_efficiency
+  attach_data_disk     - true 时挂载根级 var.data_disk_id（仅 base 应为 true）
+  k3s_role             - server | agent；agent 需 join master
+  node_labels          - K3s --node-label k=v；如 { "stack.diting/node" = "base" }
+  enable_eip           - 是否分配 EIP（base 必 true；train/infer 可走 base 跳板 SSH）
+  count                - 0 或 1；0 时本 stack 不创建任何资源（用于"按需起停"）
+EOT
+  type = map(object({
+    instance_type        = string
+    spot_strategy        = string
+    spot_price_limit     = number
+    image_family         = string
+    system_disk_gb       = number
+    system_disk_category = string
+    attach_data_disk     = bool
+    k3s_role             = string
+    node_labels          = map(string)
+    enable_eip           = bool
+    count                = number
+  }))
+  default = {}
 }

@@ -21,12 +21,13 @@ resource "random_string" "bucket_suffix" {
 }
 
 locals {
-  bucket_exists      = var.oss_bucket_name != "" && length(data.alicloud_oss_buckets.existing.buckets) > 0
-  should_create      = !local.bucket_exists
-  new_bucket_name    = var.oss_bucket_name != "" ? var.oss_bucket_name : "${var.project_name}-${var.env_id}-${random_string.bucket_suffix[0].result}"
+  bucket_exists   = var.oss_bucket_name != "" && length(data.alicloud_oss_buckets.existing.buckets) > 0
+  should_create   = !local.bucket_exists
+  new_bucket_name = var.oss_bucket_name != "" ? var.oss_bucket_name : "${var.project_name}-${var.env_id}-${random_string.bucket_suffix[0].result}"
 }
 
 # 需要创建时新建 Bucket
+# v2: prevent_destroy 保护数据（OSS 也是永驻 10 项之一）；仅 FULL_DESTROY 时 state rm 后销
 resource "alicloud_oss_bucket" "main" {
   count = local.should_create ? 1 : 0
 
@@ -52,6 +53,7 @@ resource "alicloud_oss_bucket" "main" {
 
   lifecycle {
     create_before_destroy = true
+    prevent_destroy       = true
   }
 }
 

@@ -67,6 +67,16 @@ runcmd:
     SCRIPT_PATH="scripts/k3s-init.sh"
     OSS_URL="https://$${OSS_BUCKET_NAME}.oss-$${OSS_REGION}.aliyuncs.com/$${SCRIPT_PATH}"
 
+    # v2 多 stack：导出 stack 元数据到 /etc/profile.d，供 k3s-init.sh 读取
+    # （旧调用未传 stack_id 时 templatefile 会用默认空字符串）
+    mkdir -p /etc/diting
+    cat > /etc/diting/stack.env <<EOF
+STACK_ID="${stack_id}"
+K3S_ROLE="${k3s_role}"
+NODE_LABELS="${node_labels}"
+EOF
+    log "[stack] STACK_ID=${stack_id} K3S_ROLE=${k3s_role} NODE_LABELS=${node_labels}"
+
     log "K3s 未部署，从 OSS 下载初始化脚本: oss://$${OSS_BUCKET_NAME}/$${SCRIPT_PATH}"
 
     # 安装 ossutil（如果未安装）

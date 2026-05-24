@@ -22,3 +22,51 @@ nas_use_existing_access_group = true
 nas_existing_access_group_name = "diting_nas_group_dev"
 oss_bucket_name               = "deploy-engine-k3s-storage"
 # ram_role_name     = "App-infra-manage"
+
+# ============================================================================
+# v2 多 stack（P 轨 · 按需起停）— 可选；未设时根级 main.tf 用 enable_spot/instance_type 等
+# 合成单一 "base" stack（向后兼容旧 make deploy 路径）。
+# 启用后通过 make up-stack STACK=base / make down-stack STACK=train 等管理。
+# 详见 diting-doc/03_原子目标与规约/共享平台基础/.../02_deploy-engine扩展规约.md
+# ============================================================================
+# stacks = {
+#   base = {
+#     instance_type        = "ecs.u1-c1m4.xlarge"
+#     spot_strategy        = "SpotAsPriceGo"
+#     spot_price_limit     = 0.6
+#     image_family         = "ubuntu_22_04"
+#     system_disk_gb       = 60
+#     system_disk_category = "cloud_essd"
+#     attach_data_disk     = true
+#     k3s_role             = "server"
+#     node_labels          = { "stack.diting/node" = "base" }
+#     enable_eip           = true
+#     count                = 1
+#   }
+#   train = {
+#     instance_type        = "ecs.gn6i-c4g1.xlarge"
+#     spot_strategy        = "SpotAsPriceGo"
+#     spot_price_limit     = 3.0
+#     image_family         = "ubuntu_22_04_gpu"
+#     system_disk_gb       = 100
+#     system_disk_category = "cloud_essd"
+#     attach_data_disk     = false
+#     k3s_role             = "agent"
+#     node_labels          = { "stack.diting/node" = "train", "nvidia.com/gpu" = "present" }
+#     enable_eip           = false
+#     count                = 0   # 0 = 当前不创建；make up-stack STACK=train 时改为 1 或经 TF_VAR 覆盖
+#   }
+#   infer = {
+#     instance_type        = "ecs.gn6i-c4g1.xlarge"
+#     spot_strategy        = "SpotAsPriceGo"
+#     spot_price_limit     = 3.0
+#     image_family         = "ubuntu_22_04_gpu"
+#     system_disk_gb       = 100
+#     system_disk_category = "cloud_essd"
+#     attach_data_disk     = false
+#     k3s_role             = "agent"
+#     node_labels          = { "stack.diting/node" = "infer", "nvidia.com/gpu" = "present" }
+#     enable_eip           = false
+#     count                = 0
+#   }
+# }

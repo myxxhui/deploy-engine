@@ -7,6 +7,7 @@ locals {
 }
 
 # 创建新的 NAS File System（当 use_existing_file_system=false 时）
+# v2: prevent_destroy 保护数据；仅 FULL_DESTROY 时由 Makefile state rm 后销
 resource "alicloud_nas_file_system" "main" {
   count = var.use_existing_file_system ? 0 : 1
 
@@ -15,6 +16,10 @@ resource "alicloud_nas_file_system" "main" {
   description      = "${var.project_name}_nas_${var.env_id}"
   file_system_type = "standard"
   encrypt_type     = 0
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # 创建新的 NAS Access Group（仅当 use_existing_access_group=false 时）

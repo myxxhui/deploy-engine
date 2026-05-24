@@ -4,11 +4,15 @@
 # 复用已有安全组（use_existing_security_group=true）时，不创建 SSH/6443 规则，由控制台统一管理，避免 Terraform 与控制台冲突或 NicType 导致 EIP 访问不通。
 
 # 创建新的安全组（当 use_existing_security_group=false 时）
+# v2: prevent_destroy 保护永驻资源（与 VPC/NAS 同级）；仅 FULL_DESTROY 时由 Makefile state rm 后销
 resource "alicloud_security_group" "main" {
   count               = var.use_existing_security_group ? 0 : 1
   security_group_name = "${var.project_name}-sg-${var.env_id}"
   description         = "Security group for ${var.project_name} ${var.env_id} environment"
   vpc_id              = var.vpc_id
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # 本地值：统一安全组 ID 引用

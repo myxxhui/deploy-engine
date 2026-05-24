@@ -3,7 +3,7 @@
 # ==============================================================================
 
 data "alicloud_zones" "available" {
-  count                      = var.use_existing_vpc && var.use_existing_vswitch ? 0 : 1
+  count                       = var.use_existing_vpc && var.use_existing_vswitch ? 0 : 1
   available_instance_type     = var.instance_type
   available_resource_creation = "Instance"
 }
@@ -15,19 +15,26 @@ locals {
 }
 
 # 创建新的 VPC（当 use_existing_vpc=false 时）
+# v2: prevent_destroy = true 保护永驻资源；仅 FULL_DESTROY 时由 Makefile 先 terraform state rm 后再销
 resource "alicloud_vpc" "main" {
   count      = var.use_existing_vpc ? 0 : 1
   vpc_name   = "${var.project_name}-vpc-${var.env_id}"
   cidr_block = var.vpc_cidr
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # 创建新的 VSwitch（当 use_existing_vswitch=false 时）
 resource "alicloud_vswitch" "main" {
-  count       = var.use_existing_vswitch ? 0 : 1
-  vpc_id      = var.use_existing_vpc ? var.existing_vpc_id : alicloud_vpc.main[0].id
-  cidr_block  = var.vswitch_cidr
-  zone_id     = local.selected_zone
+  count        = var.use_existing_vswitch ? 0 : 1
+  vpc_id       = var.use_existing_vpc ? var.existing_vpc_id : alicloud_vpc.main[0].id
+  cidr_block   = var.vswitch_cidr
+  zone_id      = local.selected_zone
   vswitch_name = "${var.project_name}-vswitch-${var.env_id}"
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # 本地值：统一 VPC 和 VSwitch ID 引用

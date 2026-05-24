@@ -241,3 +241,30 @@ variable "data_disk_category" {
   type        = string
   default     = "cloud_essd"
 }
+
+# ============================================================================
+# v2 新增：多 stack `for_each` 模型
+# ============================================================================
+# 用法：
+#   - 兼容旧调用（stacks = {}）：根级 main.tf 用 enable_spot / instance_type / spot_strategy 等
+#     合成单一 "base" stack，等价旧的 spot 实例创建路径。
+#   - 新调用：在 tfvars / config 中显式声明 stacks = { base = {...}, train = {...}, infer = {...} }，
+#     按 stack_id 起停，配合 terraform apply -target='module.ecs.alicloud_instance.stack["base"]' 等。
+# 详见 03_/共享平台基础/.../02_deploy-engine扩展规约.md §2。
+variable "stacks" {
+  description = "多 stack 定义（map · 字段同 module.ecs.variables.tf 中 stacks）"
+  type = map(object({
+    instance_type        = string
+    spot_strategy        = string
+    spot_price_limit     = number
+    image_family         = string
+    system_disk_gb       = number
+    system_disk_category = string
+    attach_data_disk     = bool
+    k3s_role             = string
+    node_labels          = map(string)
+    enable_eip           = bool
+    count                = number
+  }))
+  default = {}
+}

@@ -12,7 +12,7 @@ locals {
     {}
   )
 
-  project_name          = try(local.raw_config.global.project_name, local.raw_config.project_name, "deploy-engine")
+  project_name = try(local.raw_config.global.project_name, local.raw_config.project_name, "deploy-engine")
   # region 仅从 var.region（tfvars）取，不受 config_file YAML 影响，确保 tfvars 的 region 生效
   region                = var.region
   env_id_for_bucket     = try(local.raw_config.global.env, var.env_id)
@@ -99,7 +99,7 @@ module "oss" {
   vpc_id               = module.vpc.vpc_id
   region               = var.region
   common_tags          = local.common_tags
-  oss_bucket_name = var.oss_bucket_name
+  oss_bucket_name      = var.oss_bucket_name
   bucket_acl           = var.oss_bucket_acl
   nas_mount_domain     = module.nas.nas_mount_domain
   acr_server           = var.acr_server != "" ? var.acr_server : local.acr_server
@@ -117,16 +117,21 @@ data "alicloud_vswitches" "data_disk_zone" {
 resource "alicloud_disk" "prod_data" {
   count = var.enable_prod_data_disk && var.use_existing_data_disk_id == "" ? 1 : 0
 
-  zone_id             = data.alicloud_vswitches.data_disk_zone[0].vswitches[0].zone_id
-  category            = var.data_disk_category
-  size                = var.data_disk_size
-  disk_name           = "${local.project_name}-prod-data-disk-${var.env_id}"
-  description         = "Stage2-06 生产数据环境独立数据盘（Down 保留）"
+  zone_id              = data.alicloud_vswitches.data_disk_zone[0].vswitches[0].zone_id
+  category             = var.data_disk_category
+  size                 = var.data_disk_size
+  disk_name            = "${local.project_name}-prod-data-disk-${var.env_id}"
+  description          = "Stage2-06 生产数据环境独立数据盘（Down 保留）"
   delete_with_instance = false
 
   tags = merge(local.common_tags, {
     Name = "${local.project_name}-prod-data-disk-${var.env_id}"
   })
+
+  # v2: prevent_destroy 保护永驻数据盘；仅 FULL_DESTROY 时由 Makefile state rm 后销
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 locals {
@@ -134,26 +139,40 @@ locals {
   data_disk_id = var.enable_prod_data_disk ? (var.use_existing_data_disk_id != "" ? var.use_existing_data_disk_id : try(alicloud_disk.prod_data[0].id, "")) : ""
 }
 
+locals {
+  # v2 多 stack：若 tfvars/config 未提供 stacks，则根据旧变量合成单一 "base" stack（向后兼容）。
+  # 旧 enable_spot=true → spot_strategy；enable_spot=false → "NoSpot"。
+  legacy_base_stack = {
+    instance_type        = var.instance_type
+    spot_strategy        = var.enable_spot ? var.spot_strategy : "NoSpot"
+    spot_price_limit     = var.spot_price_limit
+    image_family         = "ubuntu_22_04"
+    system_disk_gb       = var.disk_size
+    system_disk_category = var.disk_category
+    attach_data_disk     = true
+    k3s_role             = "server"
+    node_labels          = { "stack.diting/node" = "base" }
+    enable_eip           = true
+    count                = 1
+  }
+
+  effective_stacks = length(var.stacks) > 0 ? var.stacks : { base = local.legacy_base_stack }
+}
+
 module "ecs" {
   source = "./ecs"
 
   project_name      = local.project_name
   env_id            = var.env_id
-  enable_spot       = var.enable_spot
-  instance_type     = var.instance_type
   instance_password = var.instance_password
   availability_zone = try(module.vpc.selected_zone, "")
   security_group_id = module.security.security_group_id
   vswitch_id        = module.vpc.vswitch_id
-  spot_strategy     = var.spot_strategy
-  spot_price_limit  = var.spot_price_limit
-  disk_category     = var.disk_category
-  disk_size         = var.disk_size
-  image_id          = var.image_id
   common_tags       = local.common_tags
   eip_bandwidth     = var.eip_bandwidth
   ram_role_name     = var.ram_role_name
   data_disk_id      = local.data_disk_id
+  stacks            = local.effective_stacks
   user_data         = "${path.root}/../../bootstrap/scripts/user-data.sh"
   user_data_vars = {
     nas_mount_domain      = module.nas.nas_mount_domain

@@ -231,11 +231,42 @@ export INSTALL_K3S_MIRROR=cn
 export INSTALL_K3S_VERSION=v1.31.4+k3s1
 export K3S_TOKEN="$${K3S_TOKEN}"
 
-log "执行 K3s 安装脚本（本地 IO 运行，NAS 存储备份，30 分钟快照策略，镜像 GC 调优）..."
+# ============================================================================
+# v2 多 stack：加载 STACK_ID / K3S_ROLE / NODE_LABELS（由 user-data.sh 写入）
+# - K3S_ROLE = server | agent；未设默认 server（向后兼容）
+# - NODE_LABELS = "k1=v1,k2=v2"；按逗号拆为多个 --node-label
+# - agent 需 join master（启动期单节点暂不展开 · agent 模式待 P-step_04/05 实现）
+# ============================================================================
+STACK_ID=""
+K3S_ROLE="server"
+NODE_LABELS=""
+if [ -f /etc/diting/stack.env ]; then
+  # shellcheck disable=SC1091
+  . /etc/diting/stack.env
+fi
+[ -z "$${K3S_ROLE}" ] && K3S_ROLE="server"
+log "[stack] STACK_ID=$${STACK_ID:-<empty>} K3S_ROLE=$${K3S_ROLE} NODE_LABELS=$${NODE_LABELS:-<empty>}"
+
+# 组装 --node-label 参数
+NODE_LABEL_ARGS=""
+if [ -n "$${NODE_LABELS}" ]; then
+  for label in $$(echo "$${NODE_LABELS}" | tr ',' ' '); do
+    NODE_LABEL_ARGS="$${NODE_LABEL_ARGS} --node-label $${label}"
+  done
+fi
+
+# 启动期 P 轨：仅 server 模式落地（agent join master 待 P-step_04/05 实现）
+if [ "$${K3S_ROLE}" = "agent" ]; then
+  log "⚠️ K3s agent 模式暂未实现 join 逻辑（P-step_04/05 完成后引入）· 当前 stack=$${STACK_ID} 退出"
+  exit 0
+fi
+
+log "执行 K3s 安装脚本（server 模式，本地 IO 运行，NAS 存储备份，30 分钟快照策略，镜像 GC 调优，stack=$${STACK_ID:-base}）..."
 K3S_INSTALL_EXIT_CODE=0
 
 # 注意：不再使用 --system-default-registry，K3s 将使用默认镜像源
 
+# shellcheck disable=SC2086
 curl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | sh -s - server \
   --token "$${K3S_TOKEN}" \
   --tls-san "$${PUBLIC_IP}" \
@@ -247,7 +278,8 @@ curl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | sh -s - server 
   --etcd-snapshot-schedule-cron "*/30 * * * *" \
   --etcd-snapshot-retention 48 \
   --kubelet-arg="image-gc-high-threshold=70" \
-  --kubelet-arg="image-gc-low-threshold=50" || K3S_INSTALL_EXIT_CODE=$$?
+  --kubelet-arg="image-gc-low-threshold=50" \
+  $${NODE_LABEL_ARGS} || K3S_INSTALL_EXIT_CODE=$$?
 
 if [ $${K3S_INSTALL_EXIT_CODE} -ne 0 ]; then
   log "❌ 错误: K3s 安装脚本执行失败 (退出码: $${K3S_INSTALL_EXIT_CODE})"

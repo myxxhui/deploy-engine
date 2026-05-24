@@ -118,6 +118,20 @@ make down lighthouse dev
 | `make down <project> <env>` | 销毁并删除对应 kubeconfig |
 | `make kubeconfig <project> <env>` | 将 kubeconfig 输出到 stdout |
 
+### v2 多 stack 命令（P 轨 · 按需起停）
+
+| 命令 | 说明 |
+|------|------|
+| `make up-stack <project> <env> STACK=<id>` | 起单 stack（base/train/infer）· `-target` 该 stack ECS+EIP |
+| `make down-stack <project> <env> STACK=<id>` | 销单 stack · 保留永驻 10 项 |
+| `make down-platform-base <project> <env>` | 销所有 ECS+EIP · 保留永驻 10 项 |
+| `make down-all <project> <env> FULL_DESTROY=1` | 完全销毁含永驻（需二次确认 `DESTROY-DATA`）|
+| `make platform-status <project> <env>` | terraform output + helm list 总览 |
+
+**永驻 10 项**（lifecycle `prevent_destroy = true`）：VPC + VSwitch + 安全组 + 路由 + 网关 + NAS 文件系统 + NAS 挂载点 + 独立 ESSD 数据盘 + OSS Bucket + ACR（云端控制台管理）。tier-1/tier-2 释放不动；仅 `make down-all FULL_DESTROY=1` 触发 `terraform state rm` 后销毁。
+
+**配置入口**：在 `terraform-<project>-<env>.tfvars` 添加 `stacks = { base = {...}, train = {...}, infer = {...} }`（示例见 `config/examples/terraform-dev.tfvars.example` 末尾）。未配置时根级 `main.tf` 用旧 `enable_spot`/`instance_type` 合成单一 `base` stack（向后兼容）。
+
 配置：若设置 `CONFIG_ROOT` 则使用 `$(CONFIG_ROOT)/<project>.yaml` 或 `deploy.yaml`/`deploy.json`；否则本仓默认使用 **config/** 下 `config/deploy.yaml` 等（请从 config/examples/ 复制示例到 config/ 并填写）。部署配置支持 .yaml/.yml/.json。
 
 ### 示例场景
