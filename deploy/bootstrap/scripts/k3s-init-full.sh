@@ -257,9 +257,115 @@ if [ -n "$${NODE_LABELS}" ]; then
   done
 fi
 
-# 启动期 P 轨：仅 server 模式落地（agent join master 待 P-step_04/05 实现）
+# ==============================================================================
+# P-step_04/05 实现：K3s Agent 模式 — 从 NAS 读取 master 地址后 join 集群
+# ==============================================================================
 if [ "$${K3S_ROLE}" = "agent" ]; then
-  log "⚠️ K3s agent 模式暂未实现 join 逻辑（P-step_04/05 完成后引入）· 当前 stack=$${STACK_ID} 退出"
+  log "[agent] K3s Agent 模式：从 NAS 读取 master 信息并 join 集群"
+
+  NAS_MASTER_IP_FILE="$${NAS_MOUNT_POINT}/k3s-master-ip"
+  AGENT_MAX_WAIT=120  # 最多等 2 分钟等 master 就绪
+  MASTER_INTERNAL_IP=""
+
+  # 等待 master 把自己的内网 IP 写入 NAS
+  log "[agent] 等待 NAS 中出现 master IP 文件 ($${NAS_MASTER_IP_FILE})..."
+  for i in $(seq 1 $${AGENT_MAX_WAIT}); do
+    if [ -f "$${NAS_MASTER_IP_FILE}" ]; then
+      MASTER_INTERNAL_IP=$(cat "$${NAS_MASTER_IP_FILE}" | tr -d '[:space:]')
+      [ -n "$${MASTER_INTERNAL_IP}" ] && break
+    fi
+    sleep 3
+  done
+
+  if [ -z "$${MASTER_INTERNAL_IP}" ]; then
+    log "❌ [agent] 超时：未能从 NAS 读取 master IP，退出"
+    exit 1
+  fi
+
+  # 等待 token 就绪（server 比 agent 早写）
+  log "[agent] master IP=$${MASTER_INTERNAL_IP}，读取 K3s Token..."
+  for i in $(seq 1 30); do
+    if [ -f "$${K3S_TOKEN_FILE}" ] && [ -s "$${K3S_TOKEN_FILE}" ]; then
+      K3S_TOKEN=$(cat "$${K3S_TOKEN_FILE}" | tr -d '[:space:]')
+      break
+    fi
+    sleep 3
+  done
+
+  if [ -z "$${K3S_TOKEN}" ]; then
+    log "❌ [agent] 无法读取 K3s Token，退出"
+    exit 1
+  fi
+
+  log "[agent] Token 已读取，安装 k3s-agent service 并 join https://$${MASTER_INTERNAL_IP}:6443"
+
+  # 获取 k3s 二进制（优先从 NAS 缓存，agent 无公网访问）
+  if [ ! -f /usr/local/bin/k3s ]; then
+    NAS_K3S_BIN="$${NAS_MOUNT_POINT}/k3s-binary/k3s"
+    log "[agent] 本地无 k3s 二进制，从 NAS 缓存获取..."
+    for i in $(seq 1 40); do
+      if [ -f "$${NAS_K3S_BIN}" ] && [ -s "$${NAS_K3S_BIN}" ]; then
+        cp "$${NAS_K3S_BIN}" /usr/local/bin/k3s
+        chmod +x /usr/local/bin/k3s
+        log "✅ [agent] 从 NAS 获取 k3s 二进制成功"
+        break
+      fi
+      log "[agent] 等待 NAS k3s 缓存就绪... ($${i}/40)"
+      sleep 5
+    done
+  fi
+
+  if [ ! -f /usr/local/bin/k3s ]; then
+    log "❌ [agent] 无法获取 k3s 二进制，退出"
+    exit 1
+  fi
+
+  # 创建 systemd service（使用已有的 /usr/local/bin/k3s 二进制）
+  cat > /etc/systemd/system/k3s-agent.service << AGENT_SVC
+[Unit]
+Description=Lightweight Kubernetes (Agent)
+Documentation=https://k3s.io
+After=network-online.target network.target
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/k3s agent \\
+  --server https://$${MASTER_INTERNAL_IP}:6443 \\
+  --token $${K3S_TOKEN} \\
+  $${NODE_LABEL_ARGS}
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+KillMode=process
+Delegate=yes
+
+[Install]
+WantedBy=multi-user.target
+AGENT_SVC
+
+  systemctl daemon-reload
+  systemctl enable k3s-agent
+  systemctl start k3s-agent
+
+  # 等待 agent 就绪（最多 60s）
+  log "[agent] 等待 k3s-agent 服务就绪..."
+  for i in $(seq 1 20); do
+    if systemctl is-active --quiet k3s-agent; then
+      log "✅ [agent] k3s-agent 已 active，join 成功（stack=$${STACK_ID:-train}）"
+      break
+    fi
+    sleep 3
+  done
+
+  if ! systemctl is-active --quiet k3s-agent; then
+    log "❌ [agent] k3s-agent 启动失败，查看日志："
+    journalctl -u k3s-agent --no-pager -n 20 2>&1 || true
+    exit 1
+  fi
+
+  log "=== K3s Agent 初始化完成 ==="
   exit 0
 fi
 
@@ -359,6 +465,21 @@ if [ "$${CONFIG_GENERATED}" != "true" ]; then
   journalctl -u k3s --no-pager -n 50 | tail -30 || true
   ls -la /var/lib/rancher/k3s/ 2>/dev/null || true
   exit 1
+fi
+
+# ==============================================================================
+# Server 模式：把自己的内网 IP 写入 NAS，并缓存 k3s 二进制供 agent 使用
+# ==============================================================================
+log "[server] 将内网 IP 写入 NAS（供 agent join 使用）..."
+INTERNAL_IP=$(hostname -I | awk '{print $1}')
+echo "$${INTERNAL_IP}" > "$${NAS_MOUNT_POINT}/k3s-master-ip"
+log "✅ [server] 内网 IP $${INTERNAL_IP} 已写入 $${NAS_MOUNT_POINT}/k3s-master-ip"
+
+# 将 k3s 二进制缓存到 NAS，供无公网的 agent 节点使用
+if [ -f /usr/local/bin/k3s ] && [ ! -f "$${NAS_MOUNT_POINT}/k3s-binary/k3s" ]; then
+  mkdir -p "$${NAS_MOUNT_POINT}/k3s-binary"
+  cp /usr/local/bin/k3s "$${NAS_MOUNT_POINT}/k3s-binary/k3s"
+  log "✅ [server] k3s 二进制已缓存到 NAS: $${NAS_MOUNT_POINT}/k3s-binary/k3s"
 fi
 
 # 增加一步：启动后立即执行一次快照测试，确保 NAS 写入正常
