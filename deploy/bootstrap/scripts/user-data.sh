@@ -39,7 +39,7 @@ runcmd:
   - systemctl start ssh || systemctl start sshd || true
   - systemctl enable ssh || systemctl enable sshd || true
   - |
-      set -euo pipefail
+    set -euo pipefail
     LOG_FILE="/var/log/k3s-init.log"
     mkdir -p "$(dirname "$LOG_FILE")"
 
