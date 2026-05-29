@@ -14,6 +14,7 @@ import (
 
 	"github.com/titan-platform/deploy-engine/pkg/config"
 	"github.com/titan-platform/deploy-engine/pkg/orchestrator"
+	"github.com/titan-platform/deploy-engine/pkg/ossstate"
 	"github.com/titan-platform/deploy-engine/pkg/provider"
 	"github.com/titan-platform/deploy-engine/pkg/provider/aliyun"
 	"github.com/titan-platform/deploy-engine/pkg/state"
@@ -123,12 +124,37 @@ func main() {
 			fmt.Fprintf(os.Stderr, "save state: %v\n", err)
 			os.Exit(1)
 		}
+		// 自动上传 state 到 OSS，实现多机共享 down 凭证
+		// 降级：凭证缺失或网络失败时只打印警告，不阻断流程
+		_ = ossstate.Upload(s.Project, s.EnvID, *statePath)
 		// #region agent log
 		agentLog("main.go:deploy:after-saveState", "deploy ok", "H4", nil)
 		// #endregion
 		fmt.Println("deploy ok, state:", *statePath)
 	case "destroy":
 		s, err := loadState(*statePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// 本地 state 不存在 → 尝试从 OSS 自动恢复
+				fmt.Fprintln(os.Stderr, "[ossstate] 本地 state 文件不存在，尝试从 OSS 恢复...")
+				proj := *project
+				env := *envID
+				ossErr := ossstate.Download(proj, env, *statePath)
+				if ossErr == nil {
+					// 恢复成功，重新加载
+					s, err = loadState(*statePath)
+				} else if os.IsNotExist(ossErr) {
+					// OSS 上也没有（资源可能已销毁或从未 deploy）
+					s = nil
+					err = os.ErrNotExist
+				} else {
+					// OSS 访问失败，但凭证/网络问题不应阻断 FULL_DESTROY
+					fmt.Fprintf(os.Stderr, "[ossstate warn] 从 OSS 恢复 state 失败: %v\n", ossErr)
+					s = nil
+					err = os.ErrNotExist
+				}
+			}
+		}
 		if err != nil {
 			// 无 state 文件时，FULL_DESTROY=1 且指定了 project 则仍可完整销毁（按 tfvars 清理资源）
 			if os.IsNotExist(err) && os.Getenv("FULL_DESTROY") != "" && *project != "" {
@@ -163,6 +189,11 @@ func main() {
 		if err := eng.Destroy(context.Background(), s); err != nil {
 			fmt.Fprintf(os.Stderr, "destroy: %v\n", err)
 			os.Exit(1)
+		}
+		// destroy 成功后：删除 OSS 上的 state（资源已销毁，凭证无意义）并清理本地文件
+		_ = ossstate.Delete(proj, env)
+		if err := os.Remove(*statePath); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "[ossstate warn] 删除本地 state 文件失败: %v\n", err)
 		}
 		fmt.Println("destroy ok")
 	case "kubeconfig":
