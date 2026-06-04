@@ -59,3 +59,16 @@ output "stacks_info" {
   description = "所有 active stack 的 { stack_id => { instance_id, public_ip, image_id } } 映射"
   value       = module.ecs.stacks_info
 }
+
+output "anthropic_proxy_public_ip" {
+  description = "bootstrap_mode=proxy 的 stack 公网 IP（供 diting-infra 合成 HTTPS_PROXY）"
+  value = try(
+    module.ecs.stacks_info["proxy"].public_ip,
+    ""
+  )
+}
+
+output "anthropic_proxy_port" {
+  description = "3proxy 端口"
+  value       = var.anthropic_proxy_port
+}

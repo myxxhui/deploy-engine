@@ -2,7 +2,8 @@
 # 在仓库根目录执行；PROJECT 与 ENV 从目标参数解析，如 make deploy lighthouse dev
 
 KNOWN_TARGETS = deploy down kubeconfig nodes help build fix-nas-state \
-                up-stack down-stack down-platform-base down-all platform-status
+                up-stack down-stack down-platform-base down-all platform-status \
+                deploy-proxy up-proxy down-proxy platform-status-proxy
 ARGS = $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
 PROJECT = $(firstword $(ARGS))
 ENV = $(if $(word 2,$(ARGS)),$(word 2,$(ARGS)),dev)
@@ -32,7 +33,8 @@ lighthouse dev prod:
 	@:
 
 .PHONY: deploy down kubeconfig nodes help build lighthouse dev prod fix-nas-state \
-        up-stack down-stack down-platform-base down-all platform-status
+        up-stack down-stack down-platform-base down-all platform-status \
+        deploy-proxy up-proxy down-proxy platform-status-proxy
 
 # 源码更新时自动重建；无依赖或 BIN 不存在时也会构建
 build: $(BIN)
@@ -48,9 +50,13 @@ help:
 	@echo "  make kubeconfig <project> <env> - 输出 kubeconfig 到 stdout"
 	@echo "  make nodes <project> <env>      - 使用对应 kubeconfig 执行 kubectl get nodes（无需手动 export KUBECONFIG）"
 	@echo ""
-	@echo "v2 多 stack（P 轨）— 按需起停某个 stack（base/train/infer）"
+	@echo "v2 多 stack（P 轨）— 按需起停某个 stack（base/train/infer/proxy）"
 	@echo "  make up-stack <project> <env> STACK=<id>      - 起单 stack（仅 -target 该 stack ECS+EIP）"
 	@echo "  make down-stack <project> <env> STACK=<id>    - 销单 stack（保留永驻 VPC/SG/NAS/盘/OSS）"
+	@echo "Anthropic 出口代理（新加坡 sg-proxy 环境）"
+	@echo "  make deploy-proxy <project> sg-proxy          - 首次创建 VPC+SG+proxy ECS（Terraform apply）"
+	@echo "  make up-proxy <project> sg-proxy                - 仅起 STACK=proxy"
+	@echo "  make down-proxy <project> sg-proxy              - 仅销 proxy ECS"
 	@echo "  make down-platform-base <project> <env>       - 销所有 ECS+EIP（保留永驻 10 项）"
 	@echo "  make down-all <project> <env> FULL_DESTROY=1  - 完全销毁含永驻（需二次确认 DESTROY-DATA）"
 	@echo "  make platform-status <project> <env>          - 当前 stacks 状态总览"
@@ -118,7 +124,7 @@ TF_DIR := deploy/terraform/alicloud
 TF_VAR_FILE := $(if $(CONFIG_ROOT),$(CONFIG_ROOT)/terraform-$(PROJECT)-$(ENV).tfvars,$(CURDIR)/config/terraform-$(PROJECT)-$(ENV).tfvars)
 
 _require_stack:
-	@if [ -z "$(STACK)" ]; then echo "错误: 请通过 STACK=<id> 指定 stack（base/train/infer）"; exit 1; fi
+	@if [ -z "$(STACK)" ]; then echo "错误: 请通过 STACK=<id> 指定 stack（base/train/infer/proxy）"; exit 1; fi
 	@if [ -z "$(PROJECT)" ]; then echo "错误: 请指定 project，如 make up-stack diting prod STACK=base"; exit 1; fi
 	@if [ ! -f "$(TF_VAR_FILE)" ]; then echo "错误: tfvars 不存在 ($(TF_VAR_FILE))"; exit 1; fi
 
@@ -228,3 +234,37 @@ platform-status:
 	else \
 		echo "（kubeconfig 不存在: $(KUBECONFIG_PATH)）"; \
 	fi
+
+# ============================================================================
+# Anthropic 出口代理（新加坡 · env=sg-proxy · STACK=proxy）
+# ============================================================================
+PROXY_STACK ?= proxy
+
+_tf_init_proxy:
+	@cd $(TF_DIR) && terraform init \
+	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
+	  -reconfigure \
+	  -input=false \
+	  -no-color > /dev/null
+
+deploy-proxy:
+	@if [ -z "$(PROJECT)" ]; then echo "用法: make deploy-proxy diting sg-proxy"; exit 1; fi
+	@if [ ! -f "$(TF_VAR_FILE)" ]; then echo "错误: tfvars 不存在 ($(TF_VAR_FILE))"; exit 1; fi
+	@echo "[deploy-proxy] PROJECT=$(PROJECT) ENV=$(ENV)（Terraform 全量 apply · 无 K3s）"
+	@$(MAKE) -s _tf_init_proxy
+	@cd $(TF_DIR) && terraform apply -auto-approve \
+	  -var-file="$(TF_VAR_FILE)" \
+	  -var="env_id=$(ENV)" \
+	  -var="project=$(PROJECT)" \
+	  -var="config_file=$(if $(CONFIG_ROOT),$(CONFIG_ROOT)/$(PROJECT)-$(ENV).yaml,$(CURDIR)/config/$(PROJECT)-$(ENV).yaml)"
+	@echo "[deploy-proxy] outputs:"
+	@cd $(TF_DIR) && terraform output anthropic_proxy_public_ip anthropic_proxy_port 2>/dev/null || true
+
+up-proxy:
+	@$(MAKE) up-stack $(PROJECT) $(ENV) STACK=$(PROXY_STACK)
+
+down-proxy:
+	@$(MAKE) down-stack $(PROJECT) $(ENV) STACK=$(PROXY_STACK)
+
+platform-status-proxy:
+	@$(MAKE) platform-status $(PROJECT) $(ENV)

@@ -31,7 +31,7 @@ variable "vswitch_id" {
 }
 
 variable "user_data" {
-  description = "User Data 脚本路径（用于 K3s 自动点火）"
+  description = "User Data 脚本路径（K3s · 与 user_data_k3s 二选一，向后兼容）"
   type        = string
   default     = ""
 }
@@ -89,6 +89,7 @@ key = stack_id（如 base / train / infer）。
   node_labels          - K3s --node-label k=v；如 { "stack.diting/node" = "base" }
   enable_eip           - 是否分配 EIP（base 必 true；train/infer 可走 base 跳板 SSH）
   count                - 0 或 1；0 时本 stack 不创建任何资源（用于"按需起停"）
+  bootstrap_mode       - k3s（默认）| proxy（仅 3proxy，不装 K3s）
 EOT
   type = map(object({
     instance_type        = string
@@ -102,6 +103,19 @@ EOT
     node_labels          = map(string)
     enable_eip           = bool
     count                = number
+    bootstrap_mode       = optional(string, "k3s")
   }))
   default = {}
+}
+
+variable "user_data_k3s" {
+  description = "K3s cloud-init 模板路径"
+  type        = string
+  default     = ""
+}
+
+variable "user_data_proxy" {
+  description = "Anthropic 3proxy cloud-init 模板路径"
+  type        = string
+  default     = ""
 }

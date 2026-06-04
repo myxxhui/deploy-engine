@@ -12,6 +12,8 @@
 locals {
   # 仅保留 count > 0 的 stack（实际要创建）
   active_stacks = { for k, s in var.stacks : k => s if s.count > 0 }
+  k3s_user_data_path    = var.user_data_k3s != "" ? var.user_data_k3s : var.user_data
+  proxy_user_data_path  = var.user_data_proxy
 }
 
 # 按 stack 选镜像：ubuntu_22_04 vs ubuntu_22_04_gpu
@@ -74,15 +76,29 @@ resource "alicloud_instance" "stack" {
   system_disk_size     = each.value.system_disk_gb
   role_name            = var.ram_role_name != "" ? var.ram_role_name : null
 
-  user_data = var.user_data != "" ? base64encode(templatefile(
-    var.user_data,
-    merge(var.user_data_vars, {
-      stack_id    = each.key
-      k3s_role    = each.value.k3s_role
-      node_labels = join(",", [for k, v in each.value.node_labels : "${k}=${v}"])
-      public_ip   = each.value.enable_eip ? try(alicloud_eip_address.stack[each.key].ip_address, "") : ""
-    })
-  )) : ""
+  user_data = (
+    coalesce(try(each.value.bootstrap_mode, "k3s"), "k3s") == "proxy" && local.proxy_user_data_path != ""
+    ? base64encode(templatefile(
+      local.proxy_user_data_path,
+      merge(var.user_data_vars, {
+        stack_id    = each.key
+        k3s_role    = each.value.k3s_role
+        node_labels = join(",", [for k, v in each.value.node_labels : "${k}=${v}"])
+        public_ip   = each.value.enable_eip ? try(alicloud_eip_address.stack[each.key].ip_address, "") : ""
+      })
+    ))
+    : local.k3s_user_data_path != ""
+    ? base64encode(templatefile(
+      local.k3s_user_data_path,
+      merge(var.user_data_vars, {
+        stack_id    = each.key
+        k3s_role    = each.value.k3s_role
+        node_labels = join(",", [for k, v in each.value.node_labels : "${k}=${v}"])
+        public_ip   = each.value.enable_eip ? try(alicloud_eip_address.stack[each.key].ip_address, "") : ""
+      })
+    ))
+    : ""
+  )
 
   tags = merge(var.common_tags, {
     Name    = "${var.project_name}-${each.key}-${var.env_id}"

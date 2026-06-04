@@ -35,3 +35,21 @@ variable "ssh_allowed_cidr" {
   type        = string
   default     = ""
 }
+
+variable "enable_proxy_ingress" {
+  description = "开放 3proxy 入站（sg-proxy）"
+  type        = bool
+  default     = false
+}
+
+variable "proxy_port" {
+  description = "3proxy 端口"
+  type        = number
+  default     = 3128
+}
+
+variable "proxy_allowed_cidr" {
+  description = "允许访问 3proxy 的 CIDR（默认与 ssh_allowed_cidr 相同，可 0.0.0.0/0）"
+  type        = string
+  default     = "0.0.0.0/0"
+}

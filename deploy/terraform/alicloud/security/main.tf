@@ -74,6 +74,19 @@ resource "alicloud_security_group_rule" "vpc_internal" {
   description       = "Allow all traffic from VPC internal"
 }
 
+resource "alicloud_security_group_rule" "anthropic_proxy" {
+  count             = var.enable_proxy_ingress ? 1 : 0
+  type              = "ingress"
+  ip_protocol       = "tcp"
+  nic_type          = "intranet"
+  policy            = "accept"
+  port_range        = "${var.proxy_port}/${var.proxy_port}"
+  priority          = 2
+  security_group_id = local.security_group_id
+  cidr_ip           = var.proxy_allowed_cidr != "" ? var.proxy_allowed_cidr : "0.0.0.0/0"
+  description       = "Anthropic HTTP proxy (3proxy) for HK ECS egress"
+}
+
 resource "alicloud_security_group_rule" "egress_all" {
   count             = 1
   type              = "egress"

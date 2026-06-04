@@ -265,6 +265,32 @@ variable "stacks" {
     node_labels          = map(string)
     enable_eip           = bool
     count                = number
+    bootstrap_mode       = optional(string, "k3s")
   }))
   default = {}
+}
+
+variable "enable_proxy_ingress" {
+  description = "为 3proxy 开放入站（sg-proxy 环境 true）"
+  type        = bool
+  default     = false
+}
+
+variable "anthropic_proxy_port" {
+  description = "3proxy 监听端口"
+  type        = number
+  default     = 3128
+}
+
+variable "anthropic_proxy_user" {
+  description = "3proxy 认证用户名"
+  type        = string
+  default     = "ditingproxy"
+}
+
+variable "anthropic_proxy_password" {
+  description = "3proxy 认证密码（空则复用 instance_password）"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

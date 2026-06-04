@@ -61,6 +61,9 @@ module "security" {
   use_existing_security_group = local.use_existing_sg
   existing_security_group_id  = var.security_group_existing_id
   ssh_allowed_cidr            = var.ssh_allowed_cidr
+  enable_proxy_ingress        = var.enable_proxy_ingress
+  proxy_port                  = var.anthropic_proxy_port
+  proxy_allowed_cidr          = var.ssh_allowed_cidr
 }
 
 module "nas" {
@@ -174,6 +177,8 @@ module "ecs" {
   data_disk_id      = local.data_disk_id
   stacks            = local.effective_stacks
   user_data         = "${path.root}/../../bootstrap/scripts/user-data.sh"
+  user_data_k3s     = "${path.root}/../../bootstrap/scripts/user-data.sh"
+  user_data_proxy   = "${path.root}/../../bootstrap/scripts/user-data-proxy.sh"
   user_data_vars = {
     nas_mount_domain      = module.nas.nas_mount_domain
     project_name          = local.project_name
@@ -183,5 +188,8 @@ module "ecs" {
     acr_server            = var.acr_server != "" ? var.acr_server : local.acr_server
     acr_namespace         = var.acr_namespace != "" ? var.acr_namespace : local.acr_namespace
     k3s_api_server_domain = local.k3s_api_server_domain
+    proxy_user            = var.anthropic_proxy_user
+    proxy_password = var.anthropic_proxy_password != "" ? var.anthropic_proxy_password : var.instance_password
+    proxy_port            = tostring(var.anthropic_proxy_port)
   }
 }
