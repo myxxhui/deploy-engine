@@ -981,6 +981,13 @@ func (d *Driver) deployDatabases(ctx context.Context, configFilePath string, kub
 	return nil
 }
 
+func persistenceSizeOrDefault(storage config.StorageConfig, fallback string) string {
+	if strings.TrimSpace(storage.Size) != "" {
+		return strings.TrimSpace(storage.Size)
+	}
+	return fallback
+}
+
 // deployTimescaleDB 部署 TimescaleDB（使用 Bitnami PostgreSQL chart + TimescaleDB 扩展）
 func (d *Driver) deployTimescaleDB(ctx context.Context, kubeConfig []byte, namespace string, storage config.StorageConfig) error {
 	values := map[string]any{
@@ -992,7 +999,7 @@ func (d *Driver) deployTimescaleDB(ctx context.Context, kubeConfig []byte, names
 		"primary": map[string]any{
 			"persistence": map[string]any{
 				"enabled": true,
-				"size":    storage.Size,
+				"size":    persistenceSizeOrDefault(storage, "50Gi"),
 			},
 		},
 	}
@@ -1017,7 +1024,7 @@ func (d *Driver) deployPostgresL2(ctx context.Context, kubeConfig []byte, namesp
 		"primary": map[string]any{
 			"persistence": map[string]any{
 				"enabled": true,
-				"size":    storage.Size,
+				"size":    persistenceSizeOrDefault(storage, "20Gi"),
 			},
 		},
 	}
@@ -1040,7 +1047,7 @@ func (d *Driver) deployRedis(ctx context.Context, kubeConfig []byte, namespace s
 		"master": map[string]any{
 			"persistence": map[string]any{
 				"enabled": true,
-				"size":    storage.Size,
+				"size":    persistenceSizeOrDefault(storage, "10Gi"),
 			},
 		},
 	}
