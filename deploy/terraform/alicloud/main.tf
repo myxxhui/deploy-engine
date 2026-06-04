@@ -159,7 +159,11 @@ locals {
     count                = 1
   }
 
-  effective_stacks = length(var.stacks) > 0 ? var.stacks : { base = local.legacy_base_stack }
+  # merge 避免三元表达式将结果类型统一为「必须含 base 键」（proxy-only 环境会报错）
+  effective_stacks = merge(
+    length(var.stacks) > 0 ? {} : { base = local.legacy_base_stack },
+    var.stacks
+  )
 }
 
 module "ecs" {
