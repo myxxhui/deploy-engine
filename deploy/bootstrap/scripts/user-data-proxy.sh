@@ -45,8 +45,10 @@ write_files:
       Description=3proxy Anthropic egress
       After=network.target
       [Service]
+      Type=forking
       ExecStart=/usr/local/bin/3proxy /etc/3proxy/3proxy.cfg
-      Restart=always
+      PIDFile=/run/3proxy.pid
+      Restart=on-failure
       [Install]
       WantedBy=multi-user.target
       UNIT
