@@ -123,6 +123,17 @@ TF_DIR := deploy/terraform/alicloud
 # TF_VAR_FILE 总是绝对路径（CONFIG_ROOT 为空时用 CURDIR 前缀），避免 cd $(TF_DIR) 后相对路径失效
 TF_VAR_FILE := $(if $(CONFIG_ROOT),$(CONFIG_ROOT)/terraform-$(PROJECT)-$(ENV).tfvars,$(CURDIR)/config/terraform-$(PROJECT)-$(ENV).tfvars)
 
+# 0 字节本地 terraform.tfstate 会干扰 OSS remote backend，换机/重 init 前统一清理
+_tf_sanitize_state:
+	@if [ -f "$(TF_DIR)/terraform.tfstate" ] && [ ! -s "$(TF_DIR)/terraform.tfstate" ]; then rm -f "$(TF_DIR)/terraform.tfstate"; fi
+
+_tf_init_backend: _tf_sanitize_state
+	@cd $(TF_DIR) && terraform init \
+	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
+	  -reconfigure \
+	  -input=false \
+	  -no-color > /dev/null
+
 _require_stack:
 	@if [ -z "$(STACK)" ]; then echo "错误: 请通过 STACK=<id> 指定 stack（base/train/infer/proxy）"; exit 1; fi
 	@if [ -z "$(PROJECT)" ]; then echo "错误: 请指定 project，如 make up-stack diting prod STACK=base"; exit 1; fi
@@ -132,11 +143,7 @@ _require_stack:
 # 兼容旧使用：STACK=base 时等价 make deploy；但 deploy 走 Go orchestrator 完成 kubeconfig 拉取，建议优先用 deploy
 up-stack: _require_stack
 	@echo "[up-stack] STACK=$(STACK) PROJECT=$(PROJECT) ENV=$(ENV)"
-	@cd $(TF_DIR) && terraform init \
-	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
-	  -reconfigure \
-	  -input=false \
-	  -no-color > /dev/null
+	@$(MAKE) -s _tf_init_backend
 	@cd $(TF_DIR) && terraform apply -auto-approve \
 	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
@@ -149,11 +156,7 @@ up-stack: _require_stack
 # tier-1：销单 stack（仅 ECS+EIP+attach；永驻资源 lifecycle prevent_destroy 保护）
 down-stack: _require_stack
 	@echo "[down-stack] STACK=$(STACK) PROJECT=$(PROJECT) ENV=$(ENV)"
-	@cd $(TF_DIR) && terraform init \
-	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
-	  -reconfigure \
-	  -input=false \
-	  -no-color > /dev/null
+	@$(MAKE) -s _tf_init_backend
 	@cd $(TF_DIR) && terraform destroy -auto-approve \
 	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
@@ -168,11 +171,7 @@ down-platform-base:
 	@if [ -z "$(PROJECT)" ]; then echo "错误: 请指定 project，如 make down-platform-base diting prod"; exit 1; fi
 	@if [ ! -f "$(TF_VAR_FILE)" ]; then echo "错误: tfvars 不存在 ($(TF_VAR_FILE))"; exit 1; fi
 	@echo "[down-platform-base] 销所有 stack ECS+EIP · 保留永驻 10 项"
-	@cd $(TF_DIR) && terraform init \
-	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
-	  -reconfigure \
-	  -input=false \
-	  -no-color > /dev/null
+	@$(MAKE) -s _tf_init_backend
 	@cd $(TF_DIR) && terraform destroy -auto-approve \
 	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
@@ -205,11 +204,7 @@ down-all:
 	  'alicloud_disk.prod_data[0]'; do \
 	    terraform state rm "$$r" 2>/dev/null || true; \
 	  done
-	@cd $(TF_DIR) && terraform init \
-	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
-	  -reconfigure \
-	  -input=false \
-	  -no-color > /dev/null
+	@$(MAKE) -s _tf_init_backend
 	@cd $(TF_DIR) && terraform destroy -auto-approve \
 	  -var-file="$(TF_VAR_FILE)" \
 	  -var="env_id=$(ENV)" \
@@ -219,11 +214,7 @@ down-all:
 platform-status:
 	@if [ -z "$(PROJECT)" ]; then echo "用法: make platform-status <project> <env>"; exit 1; fi
 	@echo "=== Terraform stacks_info ==="
-	@cd $(TF_DIR) && terraform init \
-	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
-	  -reconfigure \
-	  -input=false \
-	  -no-color > /dev/null 2>&1 || true
+	@$(MAKE) -s _tf_init_backend 2>/dev/null || true
 	@cd $(TF_DIR) && terraform output -json stacks_info 2>/dev/null || echo "（无 state 或未部署）"
 	@echo ""
 	@echo "=== KUBECONFIG 与 nodes ==="
@@ -241,11 +232,7 @@ platform-status:
 PROXY_STACK ?= proxy
 
 _tf_init_proxy:
-	@cd $(TF_DIR) && terraform init \
-	  -backend-config="prefix=$(PROJECT)/$(ENV)" \
-	  -reconfigure \
-	  -input=false \
-	  -no-color > /dev/null
+	@$(MAKE) -s _tf_init_backend
 
 deploy-proxy:
 	@if [ -z "$(PROJECT)" ]; then echo "用法: make deploy-proxy diting sg-proxy"; exit 1; fi
@@ -257,6 +244,11 @@ deploy-proxy:
 	  -var="env_id=$(ENV)" \
 	  -var="project=$(PROJECT)" \
 	  -var="config_file=$(if $(CONFIG_ROOT),$(CONFIG_ROOT)/$(PROJECT)-$(ENV).yaml,$(CURDIR)/config/$(PROJECT)-$(ENV).yaml)"
+	@_n=$$(cd $(TF_DIR) && terraform state list 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$${_n:-0}" = "0" ]; then \
+	  echo "错误: deploy-proxy apply 后 remote state 仍为空（请删除 deploy/terraform/alicloud 下 0 字节 terraform.tfstate 后重试）"; \
+	  exit 1; \
+	fi
 	@echo "[deploy-proxy] outputs:"
 	@cd $(TF_DIR) && terraform output anthropic_proxy_public_ip anthropic_proxy_port 2>/dev/null || true
 
