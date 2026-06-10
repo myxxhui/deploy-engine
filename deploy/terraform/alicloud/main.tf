@@ -137,6 +137,26 @@ resource "alicloud_disk" "prod_data" {
   }
 }
 
+resource "alicloud_ecs_auto_snapshot_policy" "prod_data" {
+  count = var.enable_prod_data_disk && var.enable_prod_data_disk_snapshot ? 1 : 0
+
+  auto_snapshot_policy_name = "${local.project_name}-prod-data-daily-${var.env_id}"
+  repeat_weekdays           = var.prod_data_snapshot_repeat_weekdays
+  retention_days            = var.prod_data_snapshot_retention_days
+  time_points               = var.prod_data_snapshot_time_points
+
+  tags = merge(local.common_tags, {
+    Name = "${local.project_name}-prod-data-daily"
+  })
+}
+
+resource "alicloud_ecs_auto_snapshot_policy_attachment" "prod_data" {
+  count = var.enable_prod_data_disk && var.enable_prod_data_disk_snapshot && local.data_disk_id != "" ? 1 : 0
+
+  auto_snapshot_policy_id = alicloud_ecs_auto_snapshot_policy.prod_data[0].id
+  disk_id                 = local.data_disk_id
+}
+
 locals {
   # 数据盘 ID：已有则用已有，否则用新建盘；未启用则为空
   data_disk_id = var.enable_prod_data_disk ? (var.use_existing_data_disk_id != "" ? var.use_existing_data_disk_id : try(alicloud_disk.prod_data[0].id, "")) : ""

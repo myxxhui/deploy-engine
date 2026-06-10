@@ -54,6 +54,11 @@ output "data_disk_id" {
   value       = local.data_disk_id
 }
 
+output "prod_data_snapshot_policy_id" {
+  description = "权威数据盘自动快照策略 ID"
+  value       = try(alicloud_ecs_auto_snapshot_policy.prod_data[0].id, "")
+}
+
 # v2 新增：多 stack 信息（map · 用于 make platform-status / 应用仓 K8s 注册）
 output "stacks_info" {
   description = "所有 active stack 的 { stack_id => { instance_id, public_ip, image_id } } 映射"

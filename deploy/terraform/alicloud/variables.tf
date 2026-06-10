@@ -242,6 +242,30 @@ variable "data_disk_category" {
   default     = "cloud_essd"
 }
 
+variable "enable_prod_data_disk_snapshot" {
+  description = "是否为权威独立数据盘启用自动快照策略"
+  type        = bool
+  default     = true
+}
+
+variable "prod_data_snapshot_time_points" {
+  description = "自动快照时间点（UTC+8 整点小时 0-23；15:30 之后取 16）"
+  type        = list(string)
+  default     = ["16"]
+}
+
+variable "prod_data_snapshot_retention_days" {
+  description = "自动快照保留天数"
+  type        = number
+  default     = 7
+}
+
+variable "prod_data_snapshot_repeat_weekdays" {
+  description = "自动快照重复星期（1=周一 … 7=周日）"
+  type        = list(string)
+  default     = ["1", "2", "3", "4", "5", "6", "7"]
+}
+
 # ============================================================================
 # v2 新增：多 stack `for_each` 模型
 # ============================================================================
