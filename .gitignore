@@ -4,6 +4,9 @@
 *.tfstate
 # *.tfstate.*
 *.tfstate.backup
+# Terraform 自动生成的带时间戳的 state 备份（如 terraform.tfstate.1234567890.backup）
+*.tfstate.*.backup
+*.tfstate.bak.*
 
 # Local config with secrets
 # config/examples/ 为示例目录，可安全提交 GitHub（使用占位符 CHANGE_ME）
