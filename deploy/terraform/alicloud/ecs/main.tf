@@ -53,7 +53,8 @@ resource "alicloud_eip_address" "stack" {
   internet_charge_type = "PayByTraffic"
   payment_type         = "PostPaid"
   lifecycle {
-    ignore_changes = [payment_type]
+    ignore_changes  = [payment_type]
+    prevent_destroy = true
   }
 }
 
