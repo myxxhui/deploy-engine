@@ -53,8 +53,9 @@ resource "alicloud_eip_address" "stack" {
   internet_charge_type = "PayByTraffic"
   payment_type         = "PostPaid"
   lifecycle {
-    ignore_changes  = [payment_type]
-    prevent_destroy = true
+    ignore_changes = [payment_type]
+    # 不在此资源上全局 prevent_destroy：proxy 等 stack 的 EIP 需随 down 正常释放。
+    # 香港 base 固定 EIP（Cursor 访问）由 diting-infra make down 在 destroy 前 state rm 保护。
   }
 }
 
