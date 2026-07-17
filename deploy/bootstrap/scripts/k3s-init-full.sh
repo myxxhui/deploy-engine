@@ -378,7 +378,6 @@ K3S_INSTALL_EXIT_CODE=0
 curl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | sh -s - server \
   --token "$${K3S_TOKEN}" \
   --tls-san "$${PUBLIC_IP}" \
-  --tls-san "47.242.184.56" \
   --tls-san "`hostname`" \
   --disable traefik \
   --disable servicelb \
